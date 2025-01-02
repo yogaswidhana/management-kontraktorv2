@@ -16,6 +16,7 @@ const NavContainer = styled('nav')`
     z-index: 1000;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 `;
 
@@ -28,6 +29,11 @@ const NavBrand = styled('div')`
     &:hover {
         color: var(--secondary-color);
         transition: color 0.3s ease;
+    }
+
+    @media (max-width: 768px) {
+        font-size: 1.2rem;
+        margin-right: 1rem;
     }
 `;
 
@@ -45,7 +51,9 @@ const MenuButton = styled('button')`
     }
     
     @media (max-width: 768px) {
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 `;
 
@@ -61,14 +69,16 @@ const NavList = styled('div')<{ isOpen: boolean }>`
         right: 0;
         background-color: var(--primary-color);
         padding: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         animation: ${props => props.isOpen ? 'slideDown 0.3s ease' : 'none'};
+        flex-direction: column;
+        border-radius: 0 0 8px 8px;
     }
 
     @keyframes slideDown {
         from {
             opacity: 0;
-            transform: translateY(-10px);
+            transform: translateY(-20px);
         }
         to {
             opacity: 1;
@@ -81,23 +91,39 @@ const NavItem = styled('div')`
     a, button {
         color: #fff;
         text-decoration: none;
-        padding: 0.5rem 1rem;
-        border-radius: 4px;
+        padding: 0.8rem 1.2rem;
+        border-radius: 8px;
         transition: all 0.3s ease;
-        display: inline-block;
+        display: flex;
+        align-items: center;
         font-weight: 500;
         border: none;
         background: none;
         cursor: pointer;
-        font-size: inherit;
+        font-size: 1rem;
+        white-space: nowrap;
         
         &:hover {
             background-color: var(--secondary-color);
             transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         &:active {
             transform: translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            width: 100%;
+            padding: 1rem;
+            justify-content: center;
+            margin: 0.3rem 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            
+            &:hover {
+                background-color: var(--secondary-color);
+                transform: scale(1.02);
+            }
         }
     }
 `;
@@ -127,42 +153,19 @@ const Navbar: React.FC<NavbarProps> = ({ onLogout }) => {
                 <Box sx={{ 
                     display: 'flex',
                     flexDirection: {xs: 'column', md: 'row'},
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    alignItems: {xs: 'stretch', md: 'center'},
+                    justifyContent: 'flex-end',
                     width: '100%',
-                    p: {xs: 2, md: 0}
+                    gap: {xs: 1.5, md: 3},
+                    p: {xs: 1, md: 0}
                 }}>
-                    <Box sx={{ 
-                        display: 'flex',
-                        flexDirection: {xs: 'column', md: 'row'},
-                        gap: 2,
-                        flex: 1,
-                        alignItems: 'center',
-                        overflow: {md: 'auto'},
-                        whiteSpace: {md: 'nowrap'}
-                    }}>
-                        <NavItem><Link to="/informasi-proyek" onClick={handleNavItemClick}>Info Proyek</Link></NavItem>
-                        <NavItem><Link to="/progress" onClick={handleNavItemClick}>Progres</Link></NavItem>
-                        <NavItem><Link to="/report-dimensions" onClick={handleNavItemClick}>Laporan Dimensi</Link></NavItem>
-                        <NavItem><Link to="/report-compaction" onClick={handleNavItemClick}>Laporan Pemadatan</Link></NavItem>
-                        <NavItem><Link to="/report-method" onClick={handleNavItemClick}>Laporan Metode</Link></NavItem>
-                        <NavItem><Link to="/density-estimation" onClick={handleNavItemClick}>Estimasi Kepadatan</Link></NavItem>
-                        <NavItem><Link to="/method-assessment" onClick={handleNavItemClick}>Penilaian Metode</Link></NavItem>
-                        <NavItem><Link to="/settings" onClick={handleNavItemClick}>Pengaturan</Link></NavItem>
-                    </Box>
-                    <Box sx={{
-                        display: 'flex',
-                        mt: {xs: 2, md: 0},
-                        borderTop: {xs: '1px solid rgba(255,255,255,0.1)', md: 'none'},
-                        pt: {xs: 2, md: 0}
-                    }}>
-                        <NavItem>
-                            <button onClick={() => {
-                                handleNavItemClick();
-                                onLogout();
-                            }}>Keluar</button>
-                        </NavItem>
-                    </Box>
+                    <NavItem><Link to="/settings" onClick={handleNavItemClick}>Pengaturan</Link></NavItem>
+                    <NavItem>
+                        <button onClick={() => {
+                            handleNavItemClick();
+                            onLogout();
+                        }}>Keluar</button>
+                    </NavItem>
                 </Box>
             </NavList>
         </NavContainer>

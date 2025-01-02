@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-import { TextField, Button, Typography, Container, Box, Paper } from '@mui/material';
+import { TextField, Button, Typography, Container, Box, Paper, useTheme, useMediaQuery } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { toast } from 'react-toastify';
 
@@ -11,44 +11,61 @@ const LoginContainer = styled(Container)`
     align-items: center;
     justify-content: center;
     background-color: #f5f5f5;
+    padding: ${({ theme }) => theme.spacing(2)};
 `;
 
-const LoginPaper = styled(Paper)`
-    padding: 2rem;
-    border-radius: 15px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-    background-color: white;
-    width: 100%;
-    max-width: 400px;
-`;
+const LoginPaper = styled(Paper)(({ theme }) => ({
+    padding: theme.spacing(3),
+    borderRadius: theme.spacing(2),
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.1)',
+    backgroundColor: 'white',
+    width: '100%',
+    maxWidth: '400px',
+    [theme.breakpoints.down('sm')]: {
+        padding: theme.spacing(2),
+        margin: theme.spacing(1),
+        borderRadius: theme.spacing(1.5),
+    }
+}));
 
-const LoginTitle = styled(Typography)`
-    color: #1976d2;
-    font-weight: bold;
-    margin-bottom: 2rem;
-`;
+const LoginTitle = styled(Typography)(({ theme }) => ({
+    color: theme.palette.primary.main,
+    fontWeight: 'bold',
+    marginBottom: theme.spacing(3),
+    [theme.breakpoints.down('sm')]: {
+        fontSize: '1.75rem',
+        marginBottom: theme.spacing(2),
+    }
+}));
 
-const StyledTextField = styled(TextField)`
-    margin-bottom: 1rem;
-    
-    & .MuiOutlinedInput-root {
-        &:hover fieldset {
-            border-color: #1976d2;
+const StyledTextField = styled(TextField)(({ theme }) => ({
+    marginBottom: theme.spacing(2),
+    '& .MuiOutlinedInput-root': {
+        borderRadius: theme.spacing(1),
+        '&:hover fieldset': {
+            borderColor: theme.palette.primary.main,
+        },
+        [theme.breakpoints.down('sm')]: {
+            fontSize: '0.9rem',
         }
     }
-`;
+}));
 
-const LoginButton = styled(Button)`
-    margin: 1.5rem 0;
-    padding: 0.8rem;
-    font-weight: bold;
-    font-size: 1rem;
-    background-color: #1976d2;
-    
-    &:hover {
-        background-color: #1565c0;
+const LoginButton = styled(Button)(({ theme }) => ({
+    margin: `${theme.spacing(2)} 0`,
+    padding: theme.spacing(1.5),
+    fontWeight: 'bold',
+    fontSize: '1rem',
+    borderRadius: theme.spacing(1),
+    backgroundColor: theme.palette.primary.main,
+    '&:hover': {
+        backgroundColor: theme.palette.primary.dark,
+    },
+    [theme.breakpoints.down('sm')]: {
+        padding: theme.spacing(1),
+        fontSize: '0.9rem',
     }
-`;
+}));
 
 interface LoginProps {
     onLogin: (username: string, role: string) => void;
@@ -59,6 +76,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
     const handleLogin = async () => {
         if (!username || !password) {
@@ -68,7 +87,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         setIsLoading(true);
         try {
-            const response = await axios.post('http://localhost:3000/api/login', {
+            const response = await axios.post('http://localhost:5000/api/login', {
                 username,
                 password,
             }, {
@@ -82,6 +101,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 const userData = response.data.user;
                 localStorage.setItem('user', JSON.stringify(userData));
                 localStorage.setItem('token', response.data.token);
+                localStorage.setItem('organisation_id', userData.organisation_id);
                 onLogin(username, userData.role);
                 navigate('/dashboard');
             }
@@ -110,9 +130,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     return (
         <LoginContainer maxWidth={false}>
-            <LoginPaper elevation={3}>
-                <Box sx={{ textAlign: 'center' }}>
-                    <LoginTitle variant="h4">
+            <LoginPaper elevation={isMobile ? 2 : 3}>
+                <Box sx={{ 
+                    textAlign: 'center',
+                    padding: isMobile ? 1 : 2
+                }}>
+                    <LoginTitle variant={isMobile ? "h5" : "h4"}>
                         Masuk ke Sistem
                     </LoginTitle>
                     
@@ -125,9 +148,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         onKeyPress={handleKeyPress}
                         disabled={isLoading}
                         autoFocus
-                        InputProps={{
-                            sx: { borderRadius: '8px' }
-                        }}
+                        size={isMobile ? "small" : "medium"}
                     />
                     
                     <StyledTextField
@@ -139,9 +160,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         onChange={(e) => setPassword(e.target.value)}
                         onKeyPress={handleKeyPress}
                         disabled={isLoading}
-                        InputProps={{
-                            sx: { borderRadius: '8px' }
-                        }}
+                        size={isMobile ? "small" : "medium"}
                     />
                     
                     <LoginButton
@@ -149,16 +168,18 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         fullWidth
                         onClick={handleLogin}
                         disabled={isLoading}
+                        size={isMobile ? "medium" : "large"}
                     >
                         {isLoading ? 'Memproses...' : 'Masuk'}
                     </LoginButton>
                     
                     <Typography 
+                        variant={isMobile ? "body2" : "body1"}
                         sx={{ 
-                            mt: 2,
+                            mt: isMobile ? 1.5 : 2,
                             color: '#666',
                             '& a': {
-                                color: '#1976d2',
+                                color: 'primary.main',
                                 textDecoration: 'none',
                                 fontWeight: 'bold',
                                 '&:hover': {

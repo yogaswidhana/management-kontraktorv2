@@ -34,7 +34,7 @@ const Profile: React.FC<{ username: string }> = ({ username }) => {
         const fetchProfile = async () => {
             try {
                 setIsLoading(true);
-                const response = await axios.get(`http://localhost:3000/api/profile/${username}`);
+                const response = await axios.get(`http://localhost:5000/api/profile/${username}`);
                 setUserData(response.data);
             } catch (error: any) {
                 handleError(error);
@@ -74,7 +74,7 @@ const Profile: React.FC<{ username: string }> = ({ username }) => {
             if (!validateInput()) return;
 
             setIsLoading(true);
-            await axios.put(`http://localhost:3000/api/profile/${username}`, {
+            await axios.put(`http://localhost:5000/api/profile/${username}`, {
                 newUsername: newUsername.trim(),
                 newPassword: newPassword.trim()
             });
@@ -84,7 +84,7 @@ const Profile: React.FC<{ username: string }> = ({ username }) => {
             setNewPassword('');
             setError('');
 
-            const response = await axios.get(`http://localhost:3000/api/profile/${newUsername}`);
+            const response = await axios.get(`http://localhost:5000/api/profile/${newUsername}`);
             setUserData(response.data);
         } catch (error: any) {
             handleError(error);

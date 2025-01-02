@@ -29,7 +29,7 @@ const Profile: React.FC<{ username: string }> = ({ username }) => {
         const fetchProfile = async () => {
             try {
                 setIsLoading(true);
-                const response = await axios.get(`http://localhost:3000/api/profile/${username}`);
+                const response = await axios.get(`http://localhost:5000/api/profile/${username}`);
                 setUserData(response.data);
                 setError('');
             } catch (error) {
@@ -61,7 +61,7 @@ const Profile: React.FC<{ username: string }> = ({ username }) => {
                 return;
             }
 
-            await axios.put(`http://localhost:3000/api/profile/${username}`, {
+            await axios.put(`http://localhost:5000/api/profile/${username}`, {
                 newUsername: newUsername.trim(),
                 newPassword: newPassword.trim(),
             });
@@ -70,7 +70,7 @@ const Profile: React.FC<{ username: string }> = ({ username }) => {
             setNewUsername('');
             setNewPassword('');
             
-            const response = await axios.get(`http://localhost:3000/api/profile/${newUsername}`);
+            const response = await axios.get(`http://localhost:5000/api/profile/${newUsername}`);
             setUserData(response.data);
             
             alert('Profil berhasil diperbarui');

@@ -141,7 +141,7 @@ const DensityEstimation: React.FC = () => {
                         <TextField
                             fullWidth
                             multiline
-                            rows={1}
+                            rows={2}
                             label="Catatan"
                             name="catatan"
                             value={densityData.catatan}

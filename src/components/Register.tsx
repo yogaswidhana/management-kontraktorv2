@@ -4,31 +4,48 @@ import { TextField, Button, Typography, Container, Paper, Box, styled, MenuItem 
 import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 
-const StyledContainer = styled(Container)`
-    padding: 2rem;
-    margin-top: 2rem;
-`;
-
-const StyledPaper = styled(Paper)`
-    padding: 2rem;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-`;
-
-const FormGroup = styled(Box)`
-    margin: 1.5rem 0;
-`;
-
-const StyledLink = styled(Link)`
-    color: #1976d2;
-    text-decoration: none;
-    &:hover {
-        text-decoration: underline;
+const StyledContainer = styled(Container)(({ theme }) => ({
+    padding: theme.spacing(2),
+    marginTop: theme.spacing(2),
+    [theme.breakpoints.down('sm')]: {
+        padding: theme.spacing(1),
+        marginTop: theme.spacing(1)
     }
-`;
+}));
+
+const StyledPaper = styled(Paper)(({ theme }) => ({
+    padding: theme.spacing(3),
+    borderRadius: '16px',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
+    [theme.breakpoints.down('sm')]: {
+        padding: theme.spacing(2),
+        borderRadius: '12px',
+        margin: '0 8px'
+    }
+}));
+
+const FormGroup = styled(Box)(({ theme }) => ({
+    margin: theme.spacing(2, 0),
+    [theme.breakpoints.down('sm')]: {
+        margin: theme.spacing(1.5, 0)
+    }
+}));
+
+const StyledLink = styled(Link)(({ theme }) => ({
+    color: theme.palette.primary.main,
+    textDecoration: 'none',
+    fontWeight: 500,
+    '&:hover': {
+        textDecoration: 'underline'
+    }
+}));
 
 const Register: React.FC = () => {
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         username: '',
@@ -74,15 +91,18 @@ const Register: React.FC = () => {
 
         setIsLoading(true);
         try {
+            const organisation_id = `${formData.organisasi.replace(/\s+/g, '')}_${Date.now()}`;
+            
             const requestData = {
                 username: formData.username.trim(),
                 password: formData.password,
                 jabatan: formData.jabatan.trim(),
                 organisasi: formData.organisasi.trim(),
-                role: formData.role
+                role: formData.role,
+                organisation_id: organisation_id
             };
 
-            const response = await axios.post('http://localhost:3000/api/register', requestData);
+            const response = await axios.post('http://localhost:5000/api/register', requestData);
             
             if (response.status === 201) {
                 toast.success('Registrasi berhasil!');
@@ -107,10 +127,27 @@ const Register: React.FC = () => {
 
     return (
         <StyledContainer maxWidth="sm">
-            <StyledPaper>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-                    <PersonAddIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                    <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+            <StyledPaper elevation={isMobile ? 2 : 4}>
+                <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: 'center', 
+                    gap: 1,
+                    mb: isMobile ? 2 : 4 
+                }}>
+                    <PersonAddIcon sx={{ 
+                        fontSize: isMobile ? 40 : 48, 
+                        color: 'primary.main',
+                        mb: 1
+                    }} />
+                    <Typography 
+                        variant={isMobile ? "h5" : "h4"} 
+                        sx={{ 
+                            color: 'primary.main', 
+                            fontWeight: 'bold',
+                            textAlign: 'center'
+                        }}
+                    >
                         Registrasi
                     </Typography>
                 </Box>
@@ -123,7 +160,7 @@ const Register: React.FC = () => {
                         value={formData.username}
                         onChange={handleChange}
                         fullWidth
-                        size="small"
+                        size={isMobile ? "small" : "medium"}
                         placeholder="Masukkan username"
                         sx={{ mb: 2 }}
                         required
@@ -138,7 +175,7 @@ const Register: React.FC = () => {
                         value={formData.password}
                         onChange={handleChange}
                         fullWidth
-                        size="small"
+                        size={isMobile ? "small" : "medium"}
                         placeholder="Masukkan password"
                         sx={{ mb: 2 }}
                         required
@@ -152,7 +189,7 @@ const Register: React.FC = () => {
                         value={formData.jabatan}
                         onChange={handleChange}
                         fullWidth
-                        size="small"
+                        size={isMobile ? "small" : "medium"}
                         placeholder="Contoh: Project Manager, Site Engineer"
                         sx={{ mb: 2 }}
                         required
@@ -166,7 +203,7 @@ const Register: React.FC = () => {
                         value={formData.organisasi}
                         onChange={handleChange}
                         fullWidth
-                        size="small"
+                        size={isMobile ? "small" : "medium"}
                         placeholder="Contoh: PT. Konstruksi Jaya"
                         sx={{ mb: 2 }}
                         required
@@ -181,7 +218,7 @@ const Register: React.FC = () => {
                         value={formData.role}
                         onChange={handleChange}
                         fullWidth
-                        size="small"
+                        size={isMobile ? "small" : "medium"}
                         required
                         error={!formData.role}
                         helperText={!formData.role ? "Role wajib dipilih" : ""}
@@ -199,17 +236,19 @@ const Register: React.FC = () => {
                     fullWidth
                     sx={{
                         mt: 2,
-                        py: 1.5,
-                        borderRadius: '8px',
+                        py: isMobile ? 1 : 1.5,
+                        borderRadius: '12px',
                         textTransform: 'none',
-                        fontSize: '1rem'
+                        fontSize: isMobile ? '0.9rem' : '1rem',
+                        fontWeight: 600,
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
                     }}
                 >
                     {isLoading ? 'Mendaftar...' : 'Daftar Sekarang'}
                 </Button>
 
                 <Typography 
-                    variant="body1" 
+                    variant={isMobile ? "body2" : "body1"}
                     align="center" 
                     sx={{ 
                         mt: 3,
