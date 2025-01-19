@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Table, Button, Modal, Form, Input, message, Upload, Image, Space, Typography, Select } from 'antd';
-import { UploadOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { UploadOutlined, ArrowLeftOutlined, CameraOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import moment from 'moment';
 import type { ColumnsType } from 'antd/es/table';
@@ -29,23 +29,9 @@ interface DimensionRecord {
   lokasi_gps_tinggi: string;
   tanggal_waktu_tinggi: string;
   minggu: string;
-}
-
-interface DimensionFormValues {
-  project_id: number;
-  no_kontrak: string;
-  id_dimensi: string;
-  item_pekerjaan: string;
-  panjang_pengukuran: number;
-  lokasi_gps_panjang: string;
-  tanggal_waktu_panjang: moment.Moment;
-  lebar_pengukuran: number;
-  lokasi_gps_lebar: string;
-  tanggal_waktu_lebar: moment.Moment;
-  tinggi_pengukuran: number;
-  lokasi_gps_tinggi: string;
-  tanggal_waktu_tinggi: moment.Moment;
-  [key: string]: string | number | moment.Moment;
+  volume: number;
+  harga_satuan: number;
+  nilai_pekerjaan: number;
 }
 
 interface Project {
@@ -58,10 +44,11 @@ interface ProjectProgress {
   project_id: number;
   item_pekerjaan: string;
   nama_item_pekerjaan: string;
+  harga_satuan: number;
   minggu: string;
 }
 
-const ReportDimensions = () => {
+const ReportDimensions: React.FC = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<DimensionRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -71,6 +58,9 @@ const ReportDimensions = () => {
   const [fotoPanjang, setFotoPanjang] = useState<File | null>(null);
   const [fotoLebar, setFotoLebar] = useState<File | null>(null);
   const [fotoTinggi, setFotoTinggi] = useState<File | null>(null);
+  const [previewPanjang, setPreviewPanjang] = useState<string | null>(null);
+  const [previewLebar, setPreviewLebar] = useState<string | null>(null);
+  const [previewTinggi, setPreviewTinggi] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<number>(0);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -194,10 +184,8 @@ const ReportDimensions = () => {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-
     const fetchProgressData = async () => {
-      if (!projectId || !mounted) return;
+      if (!projectId) return;
       
       try {
         const token = localStorage.getItem('token');
@@ -207,21 +195,18 @@ const ReportDimensions = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        if (mounted) {
-          setProjectProgress(response.data);
-        }
+        const progressData = Array.isArray(response.data) ? response.data : 
+                            response.data.items ? response.data.items : [];
+        
+        setProjectProgress(progressData);
       } catch (error) {
-        if (mounted) {
-          message.error('Gagal mengambil data progress pekerjaan');
-        }
+        console.error('Error fetching progress data:', error);
+        message.error('Gagal mengambil data progress pekerjaan');
+        setProjectProgress([]);
       }
     };
 
     fetchProgressData();
-
-    return () => {
-      mounted = false;
-    };
   }, [projectId]);
 
   const handleAdd = () => {
@@ -231,6 +216,9 @@ const ReportDimensions = () => {
     setFotoPanjang(null);
     setFotoLebar(null);
     setFotoTinggi(null);
+    setPreviewPanjang(null);
+    setPreviewLebar(null); 
+    setPreviewTinggi(null);
     
     // Set waktu saat ini untuk semua field tanggal
     form.setFieldsValue({
@@ -275,83 +263,98 @@ const ReportDimensions = () => {
     }
   };
 
-  const handleSubmit = async (values: DimensionFormValues) => {
+  const calculateNilaiPekerjaan = (volume: number, progress: ProjectProgress | undefined) => {
+    if (!progress) return 0;
+    return volume * progress.harga_satuan;
+  };
+
+  const handleSubmit = async (values: any) => {
     try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        message.error('Sesi telah berakhir, silakan login kembali');
-        return;
-      }
-
-      // Validasi project dan progress
-      if (!values.project_id || !values.item_pekerjaan) {
-        message.error('Silakan pilih kegiatan dan item pekerjaan');
-        return;
-      }
-
-      // Dapatkan data project dan progress yang dipilih
-      const project = projects.find(p => p.id === values.project_id);
-      const progress = projectProgress.find(p => p.item_pekerjaan === values.item_pekerjaan);
-
-      if (!project || !progress) {
-        message.error('Data kegiatan atau item pekerjaan tidak valid');
-        return;
-      }
-
-      const formData = new FormData();
-      
-      // Tambahkan nama_kegiatan dan nama_item_pekerjaan ke formData
-      formData.append('project_id', String(values.project_id));
-      formData.append('no_kontrak', project.nomor_kontrak);
-      formData.append('id_dimensi', values.id_dimensi);
-      formData.append('item_pekerjaan', values.item_pekerjaan);
-      formData.append('nama_kegiatan', project.nama_kegiatan);
-      formData.append('nama_item_pekerjaan', progress.nama_item_pekerjaan);
-      formData.append('minggu', progress.minggu);
-      formData.append('panjang_pengukuran', String(values.panjang_pengukuran));
-      formData.append('lebar_pengukuran', String(values.lebar_pengukuran));
-      formData.append('tinggi_pengukuran', String(values.tinggi_pengukuran));
-      formData.append('lokasi_gps_panjang', values.lokasi_gps_panjang);
-      formData.append('lokasi_gps_lebar', values.lokasi_gps_lebar);
-      formData.append('lokasi_gps_tinggi', values.lokasi_gps_tinggi);
-      formData.append('tanggal_waktu_panjang', currentTime.format('YYYY-MM-DD HH:mm:ss'));
-      formData.append('tanggal_waktu_lebar', currentTime.format('YYYY-MM-DD HH:mm:ss'));
-      formData.append('tanggal_waktu_tinggi', currentTime.format('YYYY-MM-DD HH:mm:ss'));
-
-      // Append file foto jika ada
-      if (fotoPanjang) formData.append('foto_dokumentasi_panjang', fotoPanjang);
-      if (fotoLebar) formData.append('foto_dokumentasi_lebar', fotoLebar);
-      if (fotoTinggi) formData.append('foto_dokumentasi_tinggi', fotoTinggi);
-
-      const response = await axios({
-        method: editingId ? 'put' : 'post',
-        url: editingId ? `http://localhost:5000/api/dimension-reports/${editingId}` : 'http://localhost:5000/api/dimension-reports',
-        data: formData,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
+        setLoading(true);
+        const token = localStorage.getItem('token');
+        if (!token) {
+            message.error('Sesi telah berakhir, silakan login kembali');
+            return;
         }
-      });
 
-      console.log('Server response:', response.data);
+        const formData = new FormData();
+        
+        // Pisahkan item_pekerjaan dan minggu dengan pengecekan null/undefined
+        const [itemPekerjaan, minggu] = (values.item_pekerjaan || '').split('|');
 
-      if (response.status === 200 || response.status === 201) {
-        message.success(`Laporan dimensi berhasil ${editingId ? 'diperbarui' : 'ditambahkan'}`);
+        // Cari project yang dipilih untuk mendapatkan nomor kontrak
+        const selectedProject = projects.find(p => p.id === values.project_id);
+        
+        // Cari progress untuk mendapatkan nama item pekerjaan
+        const selectedProgress = projectProgress.find(p => 
+            p.item_pekerjaan === itemPekerjaan && 
+            p.minggu === minggu
+        );
+
+        // Validasi data wajib
+        if (!values.project_id || !itemPekerjaan || !selectedProject || !selectedProgress) {
+            message.error('Project dan item pekerjaan harus diisi');
+            return;
+        }
+
+        formData.append('project_id', String(values.project_id));
+        formData.append('no_kontrak', selectedProject.nomor_kontrak);
+        formData.append('id_dimensi', String(values.id_dimensi || ''));
+        formData.append('item_pekerjaan', itemPekerjaan);
+        formData.append('nama_item_pekerjaan', selectedProgress.nama_item_pekerjaan);
+        formData.append('minggu', minggu || '');
+        formData.append('panjang_pengukuran', String(values.panjang_pengukuran || 0));
+        formData.append('lebar_pengukuran', String(values.lebar_pengukuran || 0));
+        formData.append('tinggi_pengukuran', String(values.tinggi_pengukuran || 0));
+        
+        // Validasi dan tambahkan file foto
+        if (!fotoPanjang || !fotoLebar || !fotoTinggi) {
+            message.error('Semua foto dokumentasi harus diisi');
+            return;
+        }
+
+        formData.append('foto_dokumentasi_panjang', fotoPanjang);
+        formData.append('foto_dokumentasi_lebar', fotoLebar);
+        formData.append('foto_dokumentasi_tinggi', fotoTinggi);
+
+        // Tambahkan lokasi GPS dan waktu
+        formData.append('lokasi_gps_panjang', String(values.lokasi_gps_panjang || ''));
+        formData.append('lokasi_gps_lebar', String(values.lokasi_gps_lebar || ''));
+        formData.append('lokasi_gps_tinggi', String(values.lokasi_gps_tinggi || ''));
+        
+        formData.append('tanggal_waktu_panjang', moment().format('YYYY-MM-DD HH:mm:ss'));
+        formData.append('tanggal_waktu_lebar', moment().format('YYYY-MM-DD HH:mm:ss'));
+        formData.append('tanggal_waktu_tinggi', moment().format('YYYY-MM-DD HH:mm:ss'));
+
+        const response = await axios.post(
+            'http://localhost:5000/api/dimension-reports',
+            formData,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            }
+        );
+
+        console.log('Server response:', response.data);
+        message.success('Laporan dimensi berhasil ditambahkan');
         setModalVisible(false);
         form.resetFields();
-        setFotoPanjang(null);
-        setFotoLebar(null);
-        setFotoTinggi(null);
-        fetchData();
-      }
+        await fetchData();
+
     } catch (error: any) {
-      console.error('Error detail:', error.response?.data);
-      message.error(error.response?.data?.message || 'Gagal menyimpan laporan dimensi');
+        console.error('Axios error:', error);
+        if (error.response) {
+            message.error(error.response.data.message || 'Gagal menambahkan laporan dimensi');
+            console.error('Server error response:', error.response.data);
+        } else {
+            message.error('Gagal menambahkan laporan dimensi');
+        }
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  };
+};
 
   const getImageUrl = (filename: string) => {
     return `http://localhost:5000/uploads/dimensi/${filename}`;
@@ -387,17 +390,63 @@ const ReportDimensions = () => {
   };
 
   const handleProgressChange = (value: string) => {
-    console.log('Progress changed to:', value);
-    const progress = projectProgress.find(p => p.item_pekerjaan === value);
-    console.log('Found progress:', progress);
+    const [itemPekerjaan, minggu] = value.split('|');
+    const selectedProgress = projectProgress.find(p => 
+      p.item_pekerjaan === itemPekerjaan && 
+      p.minggu === minggu
+    );
+    
+    if (selectedProgress) {
+      form.setFieldsValue({
+        minggu: selectedProgress.minggu
+      });
+    }
+  };
+
+  const captureImage = async (setFotoFunction: (file: File) => void, setPreviewFunction: (preview: string) => void) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const video = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      
+      video.srcObject = stream;
+      await video.play();
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d')?.drawImage(video, 0, 0);
+
+      // Hentikan stream kamera
+      stream.getTracks().forEach(track => track.stop());
+
+      // Konversi canvas ke file dan preview URL
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+          setFotoFunction(file);
+          setPreviewFunction(URL.createObjectURL(blob));
+        }
+      }, 'image/jpeg');
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      message.error('Gagal mengakses kamera');
+    }
+  };
+
+  const handleFileChange = (file: File, setFotoFunction: (file: File) => void, setPreviewFunction: (preview: string) => void) => {
+    setFotoFunction(file);
+    setPreviewFunction(URL.createObjectURL(file));
+    return false; // Prevent upload
   };
 
   const renderMobileCard = (record: DimensionRecord) => {
-    console.log('Rendering card with record:', record);
+    const volume = record.panjang_pengukuran * record.lebar_pengukuran * record.tinggi_pengukuran;
+    const progress = projectProgress.find(p => p.item_pekerjaan === record.item_pekerjaan);
+    const nilai = calculateNilaiPekerjaan(volume, progress);
 
     return (
       <Card 
-        key={record.id}
+        key={`${record.id}-${record.nama_kegiatan}`}
         style={{ 
           marginBottom: '16px',
           borderRadius: '8px',
@@ -472,6 +521,14 @@ const ReportDimensions = () => {
               <div>{moment(record.tanggal_waktu_tinggi).format('DD/MM/YYYY HH:mm')}</div>
             </div>
           </div>
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ color: '#8c8c8c', fontWeight: 'bold' }}>Volume</div>
+            <div style={{ fontSize: '16px', color: '#1890ff' }}>{volume.toFixed(2)} m³</div>
+            <div style={{ color: '#8c8c8c', fontWeight: 'bold', marginTop: '8px' }}>Nilai Pekerjaan</div>
+            <div style={{ fontSize: '16px', color: '#1890ff' }}>
+              Rp {new Intl.NumberFormat('id-ID').format(nilai)}
+            </div>
+          </div>
         </div>
 
         <div>
@@ -539,6 +596,24 @@ const ReportDimensions = () => {
       key: 'tinggi_pengukuran'
     },
     {
+      title: 'Volume',
+      dataIndex: 'volume',
+      key: 'volume',
+      render: (volume: number) => volume.toFixed(2)
+    },
+    {
+      title: 'Harga Satuan',
+      dataIndex: 'harga_satuan',
+      key: 'harga_satuan',
+      render: (harga: number) => `Rp ${new Intl.NumberFormat('id-ID').format(harga)}`
+    },
+    {
+      title: 'Nilai Pekerjaan',
+      dataIndex: 'nilai_pekerjaan',
+      key: 'nilai_pekerjaan',
+      render: (nilai: number) => `Rp ${new Intl.NumberFormat('id-ID').format(nilai)}`
+    },
+    {
       title: 'Foto Dokumentasi',
       key: 'photos',
       render: (_: unknown, record: DimensionRecord) => (
@@ -585,6 +660,30 @@ const ReportDimensions = () => {
     },
   ];
 
+  const renderProgressOptions = () => {
+    const uniqueOptions = new Set();
+    
+    return projectProgress.map((progress, index) => {
+      const optionKey = `${progress.item_pekerjaan}_${progress.minggu}_${index}`;
+      
+      const optionValue = `${progress.item_pekerjaan}|${progress.minggu}`;
+      if (uniqueOptions.has(optionValue)) {
+        return null;
+      }
+      
+      uniqueOptions.add(optionValue);
+      
+      return (
+        <Select.Option 
+          key={optionKey} 
+          value={optionValue}
+        >
+          {`${progress.nama_item_pekerjaan} - ${progress.minggu}`}
+        </Select.Option>
+      );
+    }).filter(Boolean);
+  };
+
   return (
     <div style={{ padding: isMobile ? '12px' : '24px' }}>
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -600,17 +699,44 @@ const ReportDimensions = () => {
       </div>
       
       <Card>
-        <Title level={isMobile ? 5 : 4} style={{ 
-          color: '#1890ff',
-          fontWeight: 'bold',
-          marginBottom: '16px',
-          display: 'flex',
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
           alignItems: 'center',
-          gap: '8px'
+          marginBottom: '16px',
+          flexWrap: 'wrap',
+          gap: '12px'
         }}>
-          <InfoIcon style={{ fontSize: isMobile ? 28 : 36, color: '#1890ff' }} />
-          Laporan Dimensi
-        </Title>
+          <Title level={isMobile ? 5 : 4} style={{ 
+            color: '#1890ff',
+            fontWeight: 'bold',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <InfoIcon style={{ fontSize: isMobile ? 28 : 36, color: '#1890ff' }} />
+            Laporan Dimensi
+          </Title>
+
+          <Select
+            style={{ width: isMobile ? '100%' : 200 }}
+            placeholder="Filter Nama Kegiatan"
+            allowClear
+            onChange={(value) => {
+              const filteredData = value 
+                ? data.filter(item => item.nama_kegiatan === value)
+                : data;
+              setData(filteredData);
+            }}
+          >
+            {projects.map(project => (
+              <Select.Option key={project.id} value={project.nama_kegiatan}>
+                {project.nama_kegiatan}
+              </Select.Option>
+            ))}
+          </Select>
+        </div>
         
         {isMobile ? (
           <div>
@@ -678,17 +804,10 @@ const ReportDimensions = () => {
           <Form.Item
             name="item_pekerjaan"
             label="Nama Item Pekerjaan" 
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: 'Silakan pilih item pekerjaan' }]}
           >
             <Select onChange={handleProgressChange}>
-              {projectProgress.map((item, index) => (
-                <Select.Option 
-                  key={`${item.project_id}_${item.item_pekerjaan}_${item.minggu}_${index}`} 
-                  value={item.item_pekerjaan}
-                >
-                  {item.nama_item_pekerjaan} ({item.minggu})
-                </Select.Option>
-              ))}
+              {renderProgressOptions()}
             </Select>
           </Form.Item>
 
@@ -703,19 +822,33 @@ const ReportDimensions = () => {
           <Form.Item
             name="foto_dokumentasi_panjang"
             label="Foto Dokumentasi Panjang"
-            rules={[{ required: true }]}
+            rules={[{ required: !fotoPanjang, message: 'Foto dokumentasi panjang harus diisi' }]}
           >
-            <Upload
-              beforeUpload={(file) => {
-                setFotoPanjang(file);
-                return false;
-              }}
-              maxCount={1}
-              listType="picture-card"
-              fileList={fotoPanjang ? [{ uid: '-1', name: fotoPanjang.name, status: 'done' }] : []}
-            >
-              <Button icon={<UploadOutlined />}>Pilih Foto</Button>
-            </Upload>
+            <Space direction="vertical" align="start">
+              <Space>
+                <Upload
+                  beforeUpload={(file) => handleFileChange(file, setFotoPanjang, setPreviewPanjang)}
+                  maxCount={1}
+                  listType="picture-card"
+                  fileList={fotoPanjang ? [{ uid: '-1', name: fotoPanjang.name, status: 'done' }] : []}
+                >
+                  <Button icon={<UploadOutlined />}>Pilih File</Button>
+                </Upload>
+                <Button 
+                  icon={<CameraOutlined />} 
+                  onClick={() => captureImage(setFotoPanjang, setPreviewPanjang)}
+                >
+                  Ambil Foto
+                </Button>
+              </Space>
+              {previewPanjang && (
+                <Image
+                  src={previewPanjang}
+                  alt="Preview panjang"
+                  style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
+                />
+              )}
+            </Space>
           </Form.Item>
 
           <Form.Item
@@ -745,19 +878,33 @@ const ReportDimensions = () => {
           <Form.Item
             name="foto_dokumentasi_lebar"
             label="Foto Dokumentasi Lebar"
-            rules={[{ required: true }]}
+            rules={[{ required: !fotoLebar, message: 'Foto dokumentasi lebar harus diisi' }]}
           >
-            <Upload
-              beforeUpload={(file) => {
-                setFotoLebar(file);
-                return false;
-              }}
-              maxCount={1}
-              listType="picture-card"
-              fileList={fotoLebar ? [{ uid: '-1', name: fotoLebar.name, status: 'done' }] : []}
-            >
-              <Button icon={<UploadOutlined />}>Pilih Foto</Button>
-            </Upload>
+            <Space direction="vertical" align="start">
+              <Space>
+                <Upload
+                  beforeUpload={(file) => handleFileChange(file, setFotoLebar, setPreviewLebar)}
+                  maxCount={1}
+                  listType="picture-card"
+                  fileList={fotoLebar ? [{ uid: '-1', name: fotoLebar.name, status: 'done' }] : []}
+                >
+                  <Button icon={<UploadOutlined />}>Pilih File</Button>
+                </Upload>
+                <Button 
+                  icon={<CameraOutlined />} 
+                  onClick={() => captureImage(setFotoLebar, setPreviewLebar)}
+                >
+                  Ambil Foto
+                </Button>
+              </Space>
+              {previewLebar && (
+                <Image
+                  src={previewLebar}
+                  alt="Preview lebar"
+                  style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
+                />
+              )}
+            </Space>
           </Form.Item>
 
           <Form.Item
@@ -787,19 +934,33 @@ const ReportDimensions = () => {
           <Form.Item
             name="foto_dokumentasi_tinggi"
             label="Foto Dokumentasi Tinggi"
-            rules={[{ required: true }]}
+            rules={[{ required: !fotoTinggi, message: 'Foto dokumentasi tinggi harus diisi' }]}
           >
-            <Upload
-              beforeUpload={(file) => {
-                setFotoTinggi(file);
-                return false;
-              }}
-              maxCount={1}
-              listType="picture-card"
-              fileList={fotoTinggi ? [{ uid: '-1', name: fotoTinggi.name, status: 'done' }] : []}
-            >
-              <Button icon={<UploadOutlined />}>Pilih Foto</Button>
-            </Upload>
+            <Space direction="vertical" align="start">
+              <Space>
+                <Upload
+                  beforeUpload={(file) => handleFileChange(file, setFotoTinggi, setPreviewTinggi)}
+                  maxCount={1}
+                  listType="picture-card"
+                  fileList={fotoTinggi ? [{ uid: '-1', name: fotoTinggi.name, status: 'done' }] : []}
+                >
+                  <Button icon={<UploadOutlined />}>Pilih File</Button>
+                </Upload>
+                <Button 
+                  icon={<CameraOutlined />} 
+                  onClick={() => captureImage(setFotoTinggi, setPreviewTinggi)}
+                >
+                  Ambil Foto
+                </Button>
+              </Space>
+              {previewTinggi && (
+                <Image
+                  src={previewTinggi}
+                  alt="Preview tinggi"
+                  style={{ maxWidth: '200px', maxHeight: '200px', objectFit: 'contain' }}
+                />
+              )}
+            </Space>
           </Form.Item>
 
           <Form.Item

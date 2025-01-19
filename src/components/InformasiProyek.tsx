@@ -108,6 +108,7 @@ interface Project {
     tanggal_selesai: string;
     provisional_hand_over: string;
     final_hand_over: string;
+    item_pekerjaan_mayor: string;
     jumlah_item_pekerjaan_mayor: number;
     status: 'Aktif' | 'Selesai' | 'Tertunda' | 'Dibatalkan';
     created_at: string;
@@ -370,6 +371,7 @@ const InformasiProyek: React.FC = () => {
                                         <StyledTableCell>Provisional Hand Over</StyledTableCell>
                                         <StyledTableCell>Final Hand Over</StyledTableCell>
                                         <StyledTableCell>Item Pekerjaan Mayor</StyledTableCell>
+                                        <StyledTableCell>Jumlah Item Pekerjaan Mayor</StyledTableCell>
                                         <StyledTableCell>Status</StyledTableCell>
                                     </TableRow>
                                 </TableHead>
@@ -396,6 +398,7 @@ const InformasiProyek: React.FC = () => {
                                             <StyledTableCell>{formatDate(project.tanggal_selesai)}</StyledTableCell>
                                             <StyledTableCell>{project.provisional_hand_over || '-'}</StyledTableCell>
                                             <StyledTableCell>{project.final_hand_over || '-'}</StyledTableCell>
+                                            <StyledTableCell>{project.item_pekerjaan_mayor}</StyledTableCell>
                                             <StyledTableCell align="center">{project.jumlah_item_pekerjaan_mayor}</StyledTableCell>
                                             <StyledTableCell>
                                                 <Box

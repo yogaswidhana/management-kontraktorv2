@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Container, Paper, Typography, TextField, Button, styled, MenuItem, useTheme, useMediaQuery } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { useResizeHandler } from '../hooks/useResizeHandler';
 
 interface ProjectProgress {
     project_id: number;
@@ -14,7 +15,6 @@ interface ProjectProgress {
     harga_satuan: number;
     rencana_waktu_kerja: number;
     minggu: string;
-    progress: number;
     update_date: string;
 }
 
@@ -43,7 +43,6 @@ const StyledPaper = styled(Paper)(({ theme }) => ({
     padding: theme.spacing(3),
     borderRadius: theme.spacing(2),
     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
-    overflow: 'auto',
     [theme.breakpoints.down('sm')]: {
         padding: theme.spacing(2),
         borderRadius: theme.spacing(1)
@@ -57,14 +56,17 @@ const StyledForm = styled('form')(({ theme }) => ({
 }));
 
 const DetailProgressProyek: React.FC = () => {
+    useResizeHandler(); // Tambahkan hook untuk menangani ResizeObserver error
+    
     const navigate = useNavigate();
     const { id } = useParams();
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [project, setProject] = useState<Project | null>(null);
-    const [itemPekerjaan, setItemPekerjaan] = useState<string[]>([]);
     const [showForm, setShowForm] = useState(false);
     const [completedWeeks, setCompletedWeeks] = useState<CompletedWeeks>({});
+    const [itemPekerjaanMayor, setItemPekerjaanMayor] = useState<Array<{kode_item: string, nama_item: string}>>([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [formData, setFormData] = useState<ProjectProgress>({
         project_id: Number(id) || 0,
@@ -75,41 +77,42 @@ const DetailProgressProyek: React.FC = () => {
         harga_satuan: 0,
         rencana_waktu_kerja: 0,
         minggu: 'Minggu 1',
-        progress: 0,
         update_date: new Date().toISOString().split('T')[0]
     });
 
-    useEffect(() => {
-        let isMounted = true;
+    const fetchData = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                navigate('/login');
+                return;
+            }
 
-        const fetchData = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    navigate('/login');
-                    return;
-                }
-
-                const projectResponse = await axios.get(`http://localhost:5000/api/projects/${id}`, {
+            const [projectResponse, itemPekerjaanResponse, progressResponse] = await Promise.all([
+                axios.get(`http://localhost:5000/api/projects/${id}`, {
                     headers: { 'Authorization': `Bearer ${token}` }
-                });
+                }),
+                axios.get(`http://localhost:5000/api/item-pekerjaan-mayor/${id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                }),
+                axios.get(`http://localhost:5000/api/project-progress/${id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+            ]);
 
-                if (!isMounted) return;
-
+            if (projectResponse.data) {
                 setProject(projectResponse.data);
+                setFormData(prev => ({
+                    ...prev,
+                    rencana_waktu_kerja: projectResponse.data.lama_pekerjaan
+                }));
+            }
 
-                const items = Array.from(
-                    { length: projectResponse.data.jumlah_item_pekerjaan_mayor },
-                    (_, index) => `PEK${String(index + 1).padStart(3, '0')}`
-                );
-                setItemPekerjaan(items);
+            if (itemPekerjaanResponse.data) {
+                setItemPekerjaanMayor(itemPekerjaanResponse.data);
+            }
 
-                const progressResponse = await axios.get(`http://localhost:5000/api/project-progress/${id}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (!isMounted) return;
-
+            if (progressResponse.data) {
                 const completed: CompletedWeeks = {};
                 progressResponse.data.forEach((item: ProjectProgress) => {
                     const weekNumber = parseInt(item.minggu.replace('Minggu ', ''));
@@ -119,38 +122,36 @@ const DetailProgressProyek: React.FC = () => {
                     completed[item.item_pekerjaan].push(weekNumber);
                 });
                 setCompletedWeeks(completed);
-
-                setFormData(prev => ({
-                    ...prev,
-                    rencana_waktu_kerja: projectResponse.data.lama_pekerjaan
-                }));
-
-            } catch (error) {
-                console.error('Error fetching data:', error);
-                if (isMounted) {
-                    toast('Gagal memuat data', { icon: '❌' });
-                }
             }
-        };
 
+        } catch (error: any) {
+            toast('Gagal memuat data', { icon: '❌' });
+        }
+    }, [id, navigate]);
+
+    useEffect(() => {
         if (id) {
             fetchData();
         }
-
-        return () => {
-            isMounted = false;
-        };
-    }, [id, navigate]);
+    }, [id, fetchData]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         
         if (name === 'item_pekerjaan') {
+            const selectedItem = itemPekerjaanMayor.find(item => item.kode_item === value);
             setFormData(prev => ({
                 ...prev,
-                [name]: value
+                [name]: value,
+                nama_item_pekerjaan: selectedItem ? selectedItem.nama_item : ''
             }));
             setShowForm(true);
+        } else if (name === 'volume_pekerjaan' || name === 'harga_satuan') {
+            const numValue = value === '' ? 0 : parseFloat(value);
+            setFormData(prev => ({
+                ...prev,
+                [name]: isNaN(numValue) ? 0 : numValue
+            }));
         } else {
             setFormData(prev => ({
                 ...prev,
@@ -163,6 +164,8 @@ const DetailProgressProyek: React.FC = () => {
         e.preventDefault();
         
         try {
+            setIsSubmitting(true);
+            
             const token = localStorage.getItem('token');
             if (!token) {
                 navigate('/login');
@@ -170,15 +173,28 @@ const DetailProgressProyek: React.FC = () => {
                 return;
             }
 
-            const weekNumber = parseInt(formData.minggu.replace('Minggu ', ''));
-            if (completedWeeks[formData.item_pekerjaan]?.includes(weekNumber)) {
-                toast('Minggu ini sudah memiliki progress untuk item pekerjaan ini', { icon: '❌' });
+            if (formData.volume_pekerjaan <= 0) {
+                toast('Volume pekerjaan harus lebih besar dari 0', { icon: '❌' });
                 return;
             }
 
+            if (formData.harga_satuan <= 0) {
+                toast('Harga satuan harus lebih besar dari 0', { icon: '❌' });
+                return;
+            }
+
+            const dataToSubmit = {
+                ...formData,
+                volume_pekerjaan: Number(formData.volume_pekerjaan),
+                harga_satuan: Number(formData.harga_satuan),
+                update_date: new Date().toISOString().split('T')[0]
+            };
+
+            console.log('Data yang akan dikirim:', dataToSubmit);
+
             const response = await axios.post(
                 'http://localhost:5000/api/project-progress',
-                formData,
+                dataToSubmit,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -188,232 +204,263 @@ const DetailProgressProyek: React.FC = () => {
             );
 
             if (response.status === 201) {
-                toast('Data progress berhasil disimpan', { icon: '✅' });
-                navigate('/progress');
+                toast('Data berhasil disimpan', { icon: '✅' });
+                setFormData({
+                    project_id: Number(id) || 0,
+                    item_pekerjaan: '',
+                    nama_item_pekerjaan: '',
+                    volume_pekerjaan: 0,
+                    satuan_pekerjaan: 'm³',
+                    harga_satuan: 0,
+                    rencana_waktu_kerja: 0,
+                    minggu: 'Minggu 1',
+                    update_date: new Date().toISOString().split('T')[0]
+                });
+                setShowForm(false);
+                fetchData();
             }
-        } catch (error) {
-            console.error('Error submitting progress:', error);
-            toast('Gagal menyimpan data progress', { icon: '❌' });
+        } catch (error: any) {
+            console.error('Error:', error);
+            toast('Gagal menyimpan data', { icon: '❌' });
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     return (
-        <StyledContainer maxWidth="md">
-            <StyledPaper>
-                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Button
-                        variant="outlined"
-                        onClick={() => navigate('/progress')}
-                        startIcon={<ArrowBackIcon />}
-                        size={isMobile ? "small" : "medium"}
-                        sx={{ mb: 2 }}
-                    >
-                        Kembali
-                    </Button>
-                </Box>
+        <Box sx={{ 
+            minHeight: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            pb: 4
+        }}>
+            <StyledContainer maxWidth="lg">
+                <StyledPaper>
+                    <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Button
+                            variant="outlined"
+                            onClick={() => navigate('/progress')}
+                            startIcon={<ArrowBackIcon />}
+                            size={isMobile ? "small" : "medium"}
+                            sx={{ mb: 2 }}
+                        >
+                            Kembali
+                        </Button>
+                    </Box>
 
-                <Typography 
-                    variant={isMobile ? "h6" : "h5"} 
-                    sx={{ 
-                        mb: 3, 
-                        fontWeight: 'bold', 
-                        color: 'primary.main',
-                        textAlign: isMobile ? 'center' : 'left'
-                    }}
-                >
-                    Input Progress Proyek
                     <Typography 
-                        variant="subtitle1" 
+                        variant={isMobile ? "h6" : "h5"} 
+                        sx={{ 
+                            mb: 3, 
+                            fontWeight: 'bold', 
+                            color: 'primary.main',
+                            textAlign: isMobile ? 'center' : 'left'
+                        }}
+                    >
+                        Input Progress Proyek
+                    </Typography>
+                    <Typography
+                        variant="body1" 
                         color="text.secondary"
-                        sx={{ mt: 1 }}
+                        sx={{
+                            mb: 3,
+                            fontSize: isMobile ? '0.9rem' : '1rem',
+                            textAlign: isMobile ? 'center' : 'left',
+                            padding: isMobile ? '8px 12px' : '12px 16px',
+                            backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(0, 0, 0, 0.12)',
+                            wordBreak: 'break-word',
+                            maxWidth: '100%'
+                        }}
                     >
                         {project?.nama_kegiatan}
                     </Typography>
-                </Typography>
 
-                <StyledForm onSubmit={handleSubmit}>
-                    <Box sx={{ 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        gap: isMobile ? 1.5 : 2 
-                    }}>
-                        <TextField
-                            select
-                            label="Item Pekerjaan"
-                            name="item_pekerjaan"
-                            value={formData.item_pekerjaan}
-                            onChange={handleChange}
-                            required
-                            fullWidth
-                            size={isMobile ? "small" : "medium"}
-                        >
-                            {itemPekerjaan.map((item, index) => (
-                                <MenuItem key={index} value={item}>
-                                    {item}
-                                </MenuItem>
-                            ))}
-                        </TextField>
+                    <StyledForm onSubmit={handleSubmit}>
+                        <Box sx={{ 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            gap: isMobile ? 1.5 : 2 
+                        }}>
+                            <TextField
+                                select
+                                label="Item Pekerjaan"
+                                name="item_pekerjaan"
+                                value={formData.item_pekerjaan}
+                                onChange={handleChange}
+                                required
+                                fullWidth
+                                size={isMobile ? "small" : "medium"}
+                            >
+                                {itemPekerjaanMayor.map((item, index) => (
+                                    <MenuItem key={index} value={item.kode_item}>
+                                        {`${item.kode_item} - ${item.nama_item}`}
+                                    </MenuItem>
+                                ))}
+                            </TextField>
 
-                        {showForm && (
-                            <Box sx={{ 
-                                display: 'flex', 
-                                flexDirection: 'column', 
-                                gap: isMobile ? 1.5 : 2,
-                                mt: 1 
-                            }}>
-                                <TextField
-                                    label="Nama Item Pekerjaan"
-                                    name="nama_item_pekerjaan"
-                                    value={formData.nama_item_pekerjaan}
-                                    onChange={handleChange}
-                                    required
-                                    fullWidth
-                                    size={isMobile ? "small" : "medium"}
-                                />
-
-                                <Box sx={{ 
-                                    display: 'grid', 
-                                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                                    gap: 2 
-                                }}>
-                                    <TextField
-                                        label="Volume Pekerjaan"
-                                        name="volume_pekerjaan"
-                                        type="number"
-                                        value={formData.volume_pekerjaan}
-                                        onChange={handleChange}
-                                        required
-                                        fullWidth
-                                        size={isMobile ? "small" : "medium"}
-                                    />
-
-                                    <TextField
-                                        select
-                                        label="Satuan Pekerjaan"
-                                        name="satuan_pekerjaan"
-                                        value={formData.satuan_pekerjaan}
-                                        onChange={handleChange}
-                                        required
-                                        fullWidth
-                                        size={isMobile ? "small" : "medium"}
-                                    >
-                                        <MenuItem value="m³">m³</MenuItem>
-                                        <MenuItem value="m²">m²</MenuItem>
-                                    </TextField>
-                                </Box>
-
-                                <TextField
-                                    fullWidth
-                                    label="Harga Satuan"
-                                    name="harga_satuan"
-                                    value={formData.harga_satuan}
-                                    onChange={handleChange}
-                                    required
-                                    variant="outlined"
-                                    size={isMobile ? "small" : "medium"}
-                                    helperText="Masukkan angka dalam Rupiah (minimal 0)"
-                                />
-
-                                <Box sx={{ 
-                                    display: 'grid', 
-                                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                                    gap: 2 
-                                }}>
-                                    <TextField
-                                        label="Rencana Waktu (Minggu)"
-                                        name="rencana_waktu_kerja"
-                                        type="number"
-                                        value={formData.rencana_waktu_kerja}
-                                        onChange={handleChange}
-                                        required
-                                        fullWidth
-                                        disabled
-                                        size={isMobile ? "small" : "medium"}
-                                    />
-
-                                    <TextField
-                                        select
-                                        label="Minggu"
-                                        name="minggu"
-                                        value={formData.minggu}
-                                        onChange={handleChange}
-                                        required
-                                        fullWidth
-                                        size={isMobile ? "small" : "medium"}
-                                    >
-                                        {Array.from({ length: formData.rencana_waktu_kerja }, (_, i) => i + 1).map((weekNumber) => (
-                                            <MenuItem 
-                                                key={weekNumber} 
-                                                value={`Minggu ${weekNumber}`}
-                                                disabled={completedWeeks[formData.item_pekerjaan]?.includes(weekNumber)}
-                                            >
-                                                Minggu {weekNumber} 
-                                                {completedWeeks[formData.item_pekerjaan]?.includes(weekNumber) ? ' (Sudah diisi)' : ''}
-                                            </MenuItem>
-                                        ))}
-                                    </TextField>
-                                </Box>
-
-                                <Box sx={{ 
-                                    display: 'grid', 
-                                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                                    gap: 2 
-                                }}>
-                                    <TextField
-                                        label="Progress (%)"
-                                        name="progress"
-                                        type="number"
-                                        value={formData.progress}
-                                        onChange={handleChange}
-                                        required
-                                        fullWidth
-                                        inputProps={{ min: 0, max: 100 }}
-                                        size={isMobile ? "small" : "medium"}
-                                    />
-
-                                    <TextField
-                                        label="Tanggal Update"
-                                        name="update_date"
-                                        type="date"
-                                        value={formData.update_date}
-                                        onChange={handleChange}
-                                        required
-                                        fullWidth
-                                        InputLabelProps={{ shrink: true }}
-                                        size={isMobile ? "small" : "medium"}
-                                    />
-                                </Box>
-
+                            {showForm && (
                                 <Box sx={{ 
                                     display: 'flex', 
-                                    gap: 2, 
-                                    mt: 3,
-                                    flexDirection: isMobile ? 'column' : 'row'
+                                    flexDirection: 'column', 
+                                    gap: isMobile ? 1.5 : 2,
+                                    mt: 1 
                                 }}>
-                                    <Button
-                                        variant="contained"
-                                        color="primary"
-                                        type="submit"
+                                    <TextField
+                                        label="Nama Item Pekerjaan"
+                                        name="nama_item_pekerjaan"
+                                        value={formData.nama_item_pekerjaan}
+                                        disabled
                                         fullWidth
-                                        size={isMobile ? "large" : "medium"}
-                                    >
-                                        Simpan
-                                    </Button>
-                                    <Button
+                                        size={isMobile ? "small" : "medium"}
+                                    />
+
+                                    <Box sx={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                                        gap: 2 
+                                    }}>
+                                        <TextField
+                                            label="Volume Pekerjaan"
+                                            name="volume_pekerjaan"
+                                            type="number"
+                                            value={formData.volume_pekerjaan}
+                                            onChange={handleChange}
+                                            required
+                                            fullWidth
+                                            size={isMobile ? "small" : "medium"}
+                                            inputProps={{
+                                                step: "0.01",
+                                                min: "0"
+                                            }}
+                                            helperText="Masukkan volume pekerjaan (angka lebih besar dari 0)"
+                                        />
+
+                                        <TextField
+                                            select
+                                            label="Satuan Pekerjaan"
+                                            name="satuan_pekerjaan"
+                                            value={formData.satuan_pekerjaan}
+                                            onChange={handleChange}
+                                            required
+                                            fullWidth
+                                            size={isMobile ? "small" : "medium"}
+                                        >
+                                            <MenuItem value="m³">m³</MenuItem>
+                                            <MenuItem value="m²">m²</MenuItem>
+                                        </TextField>
+                                    </Box>
+
+                                    <TextField
+                                        fullWidth
+                                        label="Harga Satuan"
+                                        name="harga_satuan"
+                                        value={formData.harga_satuan}
+                                        onChange={handleChange}
+                                        required
                                         variant="outlined"
-                                        onClick={() => navigate('/progress')}
-                                        fullWidth
-                                        size={isMobile ? "large" : "medium"}
-                                    >
-                                        Batal
-                                    </Button>
+                                        size={isMobile ? "small" : "medium"}
+                                        helperText="Masukkan angka dalam Rupiah (minimal 0)"
+                                    />
+
+                                    <Box sx={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                                        gap: 2 
+                                    }}>
+                                        <TextField
+                                            label="Rencana Waktu (Minggu)"
+                                            name="rencana_waktu_kerja"
+                                            type="number"
+                                            value={formData.rencana_waktu_kerja}
+                                            onChange={handleChange}
+                                            required
+                                            fullWidth
+                                            disabled
+                                            size={isMobile ? "small" : "medium"}
+                                        />
+
+                                        <TextField
+                                            select
+                                            label="Minggu"
+                                            name="minggu"
+                                            value={formData.minggu}
+                                            onChange={handleChange}
+                                            required
+                                            fullWidth
+                                            size={isMobile ? "small" : "medium"}
+                                        >
+                                            {Array.from({ length: formData.rencana_waktu_kerja }, (_, i) => i + 1).map((weekNumber) => (
+                                                <MenuItem 
+                                                    key={weekNumber} 
+                                                    value={`Minggu ${weekNumber}`}
+                                                    disabled={completedWeeks[formData.item_pekerjaan]?.includes(weekNumber)}
+                                                >
+                                                    Minggu {weekNumber} 
+                                                    {completedWeeks[formData.item_pekerjaan]?.includes(weekNumber) ? ' (Sudah diisi)' : ''}
+                                                </MenuItem>
+                                            ))}
+                                        </TextField>
+                                    </Box>
+
+                                    <Box sx={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: isMobile ? '1fr' : '1fr',
+                                        gap: 2 
+                                    }}>
+                                        <TextField
+                                            label="Tanggal Update"
+                                            name="update_date"
+                                            type="date"
+                                            value={formData.update_date}
+                                            onChange={handleChange}
+                                            required
+                                            fullWidth
+                                            InputLabelProps={{ shrink: true }}
+                                            size={isMobile ? "small" : "medium"}
+                                        />
+                                    </Box>
+
+                                    <Box sx={{ 
+                                        display: 'flex', 
+                                        gap: 2, 
+                                        mt: 3,
+                                        flexDirection: isMobile ? 'column' : 'row'
+                                    }}>
+                                        <Button
+                                            variant="contained"
+                                            color="primary"
+                                            type="submit"
+                                            fullWidth
+                                            size={isMobile ? "large" : "medium"}
+                                            disabled={isSubmitting}
+                                        >
+                                            {isSubmitting ? (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 border-t-2 border-b-2 border-white rounded-full animate-spin"></div>
+                                                    <span>Menyimpan...</span>
+                                                </div>
+                                            ) : (
+                                                'Simpan'
+                                            )}
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            onClick={() => navigate('/progress')}
+                                            fullWidth
+                                            size={isMobile ? "large" : "medium"}
+                                        >
+                                            Batal
+                                        </Button>
+                                    </Box>
                                 </Box>
-                            </Box>
-                        )}
-                    </Box>
-                </StyledForm>
-            </StyledPaper>
-        </StyledContainer>
+                            )}
+                        </Box>
+                    </StyledForm>
+                </StyledPaper>
+            </StyledContainer>
+        </Box>
     );
 };
 

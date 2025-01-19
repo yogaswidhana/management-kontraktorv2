@@ -53,16 +53,12 @@ CREATE TABLE `projects` (
   `tanggal_selesai` date NOT NULL,
   `provisional_hand_over` varchar(50) NOT NULL,
   `final_hand_over` varchar(50) NOT NULL,
+  `item_pekerjaan_mayor` varchar(50) NOT NULL,
   `jumlah_item_pekerjaan_mayor` int NOT NULL,
   `status` enum('Aktif','Selesai','Tertunda','Dibatalkan') DEFAULT 'Aktif',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-INSERT INTO `projects` (`nama_kegiatan`, `nama_pekerjaan`, `lokasi`, `nomor_kontrak`, `tanggal_kontrak`, `nilai_kontrak`, `nama_kontraktor_pelaksana`, `nama_konsultan_pengawas`, `lama_pekerjaan`, `tanggal_mulai`, `tanggal_selesai`, `provisional_hand_over`, `final_hand_over`, `jumlah_item_pekerjaan_mayor`, `status`) VALUES
-('Pembangunan Gedung A', 'Konstruksi Gedung Perkantoran', 'Jakarta Pusat', 'KTR/2024/001', '2024-01-01', 5000000000.00, 'PT Kontraktor Utama', 'PT Konsultan Prima', 12, '2024-01-15', '2024-12-15', 'Provisional Hand Over 1', 'Final Hand Over 1', 5, 'Aktif'),
-('Renovasi Jalan', 'Perbaikan Jalan Raya', 'Bandung', 'KTR/2024/002', '2024-01-05', 3000000000.00, 'PT Karya Jaya', 'PT Pengawas Andal', 6, '2024-02-01', '2024-07-31', 'Provisional Hand Over 2', 'Final Hand Over 2', 3, 'Aktif'), 
-('Pembangunan Jembatan', 'Konstruksi Jembatan', 'Surabaya', 'KTR/2024/003', '2024-01-10', 8000000000.00, 'PT Bangun Infrastruktur', 'PT Konsultan Teknik', 18, '2024-03-01', '2025-08-31', 'Provisional Hand Over 3', 'Final Hand Over 3', 4, 'Aktif');
 
 -- --------------------------------------------------------
 -- Tabel Project Progress
@@ -80,6 +76,7 @@ CREATE TABLE `project_progress` (
   `minggu` VARCHAR(100) NOT NULL DEFAULT 'Minggu 1',
   `progress` INT NOT NULL DEFAULT 0,
   `update_date` DATE NOT NULL DEFAULT (CURRENT_DATE),
+  `nilai_total` DECIMAL(15,2),
   PRIMARY KEY (`id`),
   CONSTRAINT `fk_project_progress_project`
   FOREIGN KEY (`project_id`) 
@@ -88,49 +85,34 @@ CREATE TABLE `project_progress` (
   ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-INSERT INTO `project_progress` (
-  `project_id`, 
-  `item_pekerjaan`, 
-  `nama_item_pekerjaan`, 
-  `volume_pekerjaan`, 
-  `satuan_pekerjaan`, 
-  `harga_satuan`, 
-  `rencana_waktu_kerja`, 
-  `minggu`, 
-  `progress`, 
-  `update_date`
-) 
-VALUES
-(1, 'PEK001', 'Pekerjaan Fondasi', 100.50, 'm3', 1500000.00, 4, 'Minggu 1', 25, '2024-12-29'),
-(1, 'PEK002', 'Pekerjaan Struktur', 200.00, 'm2', 2500000.00, 6, 'Minggu 2', 40, '2024-12-29'),
-(2, 'PEK003', 'Pekerjaan Dinding', 150.75, 'm2', 1800000.00, 5, 'Minggu 3', 30, '2024-12-29'),
-(2, 'PEK004', 'Pekerjaan Atap', 50.00, 'm2', 3000000.00, 3, 'Minggu 4', 50, '2024-12-29'),
-(3, 'PEK005', 'Pekerjaan Lantai', 75.25, 'm2', 2200000.00, 2, 'Minggu 5', 70, '2024-12-29');
-
-
 -- --------------------------------------------------------
 -- Tabel Dimension Reports
 -- --------------------------------------------------------
 
-CREATE TABLE `dimension_reports` (
-    `id` INT AUTO_INCREMENT PRIMARY KEY,
-    `project_id` INT(11) DEFAULT NULL,
-    `no_kontrak` VARCHAR(50) NOT NULL,
-    `id_dimensi` VARCHAR(50) NOT NULL,
-    `item_pekerjaan` VARCHAR(255) NOT NULL,
-    `panjang_pengukuran` DECIMAL(10, 2) NOT NULL,
-    `foto_dokumentasi_panjang` VARCHAR(255) NOT NULL,
-    `lokasi_gps_panjang` VARCHAR(255) NOT NULL,
-    `tanggal_waktu_panjang` DATETIME NOT NULL,
-    `lebar_pengukuran` DECIMAL(10, 2) NOT NULL,
-    `foto_dokumentasi_lebar` VARCHAR(255) NOT NULL,
-    `lokasi_gps_lebar` VARCHAR(255) NOT NULL,
-    `tanggal_waktu_lebar` DATETIME NOT NULL,
-    `tinggi_pengukuran` DECIMAL(10, 2) NOT NULL,
-    `foto_dokumentasi_tinggi` VARCHAR(255) NOT NULL,
-    `lokasi_gps_tinggi` VARCHAR(255) NOT NULL,
-    `tanggal_waktu_tinggi` DATETIME NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+CREATE TABLE IF NOT EXISTS dimension_reports (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT NOT NULL,
+    no_kontrak VARCHAR(100),
+    id_dimensi VARCHAR(100),
+    item_pekerjaan VARCHAR(100),
+    minggu VARCHAR(50),
+    panjang_pengukuran DECIMAL(10,2),
+    foto_dokumentasi_panjang VARCHAR(255),
+    lokasi_gps_panjang VARCHAR(255),
+    tanggal_waktu_panjang DATETIME,
+    lebar_pengukuran DECIMAL(10,2),
+    foto_dokumentasi_lebar VARCHAR(255),
+    lokasi_gps_lebar VARCHAR(255),
+    tanggal_waktu_lebar DATETIME,
+    tinggi_pengukuran DECIMAL(10,2),
+    foto_dokumentasi_tinggi VARCHAR(255),
+    lokasi_gps_tinggi VARCHAR(255),
+    tanggal_waktu_tinggi DATETIME,
+    volume DECIMAL(10,2),
+    harga_satuan DECIMAL(15,2),
+    nilai_pekerjaan DECIMAL(15,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- --------------------------------------------------------
 -- Tabel Compaction Reports
@@ -305,3 +287,18 @@ MODIFY COLUMN tinggi_pengukuran DECIMAL(10,2) NOT NULL,
 MODIFY COLUMN foto_dokumentasi_tinggi VARCHAR(255) NOT NULL,
 MODIFY COLUMN lokasi_gps_tinggi VARCHAR(255) NOT NULL,
 MODIFY COLUMN tanggal_waktu_tinggi DATETIME NOT NULL;
+
+ALTER TABLE projects MODIFY COLUMN item_pekerjaan_mayor TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Periksa data projects yang ada
+SELECT id FROM projects;
+
+-- Jika perlu, sesuaikan foreign key constraint
+ALTER TABLE dimension_reports
+DROP FOREIGN KEY dimension_reports_ibfk_1;
+
+ALTER TABLE dimension_reports
+ADD CONSTRAINT dimension_reports_ibfk_1
+FOREIGN KEY (project_id) REFERENCES projects(id)
+ON DELETE CASCADE
+ON UPDATE CASCADE;

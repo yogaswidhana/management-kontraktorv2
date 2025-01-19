@@ -1,15 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Container, Paper, Typography, Grid, TextField, Button, MenuItem, useTheme, useMediaQuery } from '@mui/material';
+import { Box, Container, Paper, Typography, Grid, TextField, Button, MenuItem, useTheme, useMediaQuery, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { IconButton } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+
+interface ProjectData {
+    nama_kegiatan: string;
+    nama_pekerjaan: string;
+    lokasi: string;
+    nomor_kontrak: string;
+    tanggal_kontrak: string;
+    nilai_kontrak: string;
+    nama_kontraktor_pelaksana: string;
+    nama_konsultan_pengawas: string;
+    lama_pekerjaan: string;
+    tanggal_mulai: string;
+    tanggal_selesai: string;
+    provisional_hand_over: string;
+    final_hand_over: string;
+    item_pekerjaan_mayor: string[];
+    jumlah_item_pekerjaan_mayor: string;
+    status: 'Aktif' | 'Selesai' | 'Tertunda' | 'Dibatalkan';
+}
 
 const AddProject = () => {
     const navigate = useNavigate();
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     
-    const [projectData, setProjectData] = useState({
+    const [projectData, setProjectData] = useState<ProjectData>({
         nama_kegiatan: '',
         nama_pekerjaan: '',
         lokasi: '',
@@ -17,15 +39,19 @@ const AddProject = () => {
         tanggal_kontrak: '',
         nilai_kontrak: '',
         nama_kontraktor_pelaksana: '',
-        nama_konsultan_pengawas: '', 
+        nama_konsultan_pengawas: '',
         lama_pekerjaan: '',
         tanggal_mulai: '',
         tanggal_selesai: '',
         provisional_hand_over: '',
         final_hand_over: '',
+        item_pekerjaan_mayor: [],
         jumlah_item_pekerjaan_mayor: '',
-        status: 'Aktif' as 'Aktif' | 'Selesai' | 'Tertunda' | 'Dibatalkan',
+        status: 'Aktif'
     });
+
+    const [openDialog, setOpenDialog] = useState(false);
+    const [tempItemPekerjaan, setTempItemPekerjaan] = useState('');
 
     const statusOptions = [
         { value: 'Aktif', label: 'Aktif' },
@@ -54,7 +80,6 @@ const AddProject = () => {
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         
-        // Khusus untuk nilai kontrak, format sebagai angka
         if (name === 'nilai_kontrak') {
             // Hapus karakter non-digit
             const numericValue = value.replace(/[^0-9]/g, '');
@@ -64,12 +89,29 @@ const AddProject = () => {
                 ...prev,
                 [name]: formattedValue
             }));
+        } else if (name === 'jumlah_item_pekerjaan_mayor') {
+            // Validasi input jumlah item
+            const numValue = parseInt(value);
+            if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+                setProjectData(prev => ({
+                    ...prev,
+                    [name]: value
+                }));
+            }
         } else {
             setProjectData(prev => ({
                 ...prev,
                 [name]: value
             }));
         }
+    };
+
+    const handleRemoveItemPekerjaan = (index: number) => {
+        setProjectData(prev => ({
+            ...prev,
+            item_pekerjaan_mayor: prev.item_pekerjaan_mayor.filter((_, i) => i !== index),
+            jumlah_item_pekerjaan_mayor: (prev.item_pekerjaan_mayor.length - 1).toString()
+        }));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -79,7 +121,7 @@ const AddProject = () => {
             // Validasi input
             const requiredFields = [
                 'nama_kegiatan',
-                'nama_pekerjaan', 
+                'nama_pekerjaan',
                 'lokasi',
                 'nomor_kontrak',
                 'tanggal_kontrak',
@@ -89,9 +131,8 @@ const AddProject = () => {
                 'lama_pekerjaan',
                 'tanggal_mulai',
                 'tanggal_selesai',
-                'provisional_hand_over',
-                'final_hand_over',
-                'jumlah_item_pekerjaan_mayor',
+                'item_pekerjaan_mayor',
+                'jumlah_item_pekerjaan_mayor'
             ];
 
             const emptyFields = requiredFields.filter(field => !projectData[field as keyof typeof projectData]);
@@ -139,8 +180,8 @@ const AddProject = () => {
 
             // Validasi jumlah item pekerjaan mayor
             const jumlahItem = parseInt(projectData.jumlah_item_pekerjaan_mayor);
-            if (isNaN(jumlahItem) || jumlahItem <= 0) {
-                toast.error(`Jumlah item pekerjaan mayor harus berupa angka dan lebih besar dari 0`);
+            if (isNaN(jumlahItem) || jumlahItem <= 0 || jumlahItem > 100) {
+                toast.error(`Jumlah item pekerjaan mayor harus berupa angka antara 1-100`);
                 return;
             }
 
@@ -153,25 +194,19 @@ const AddProject = () => {
 
             // Format data sebelum dikirim
             const formattedData = {
-                nama_kegiatan: projectData.nama_kegiatan.trim(),
-                nama_pekerjaan: projectData.nama_pekerjaan.trim(),
-                lokasi: projectData.lokasi.trim(),
-                nomor_kontrak: projectData.nomor_kontrak.trim(),
-                tanggal_kontrak: new Date(projectData.tanggal_kontrak).toISOString().split('T')[0],
-                nilai_kontrak: nilaiKontrak,
-                nama_kontraktor_pelaksana: projectData.nama_kontraktor_pelaksana.trim(),
-                nama_konsultan_pengawas: projectData.nama_konsultan_pengawas.trim(),
-                lama_pekerjaan: lamaPekerjaan,
-                tanggal_mulai: new Date(projectData.tanggal_mulai).toISOString().split('T')[0],
-                tanggal_selesai: new Date(projectData.tanggal_selesai).toISOString().split('T')[0],
-                provisional_hand_over: projectData.provisional_hand_over.trim(),
-                final_hand_over: projectData.final_hand_over.trim(),
-                jumlah_item_pekerjaan_mayor: jumlahItem,
-                status: projectData.status,
+                ...projectData,
+                nilai_kontrak: parseFloat(projectData.nilai_kontrak.replace(/[^0-9]/g, '')),
+                lama_pekerjaan: parseInt(projectData.lama_pekerjaan),
+                jumlah_item_pekerjaan_mayor: parseInt(projectData.jumlah_item_pekerjaan_mayor)
             };
 
             // Tambahkan log untuk debugging
             console.log('Data yang akan dikirim:', formattedData);
+
+            if (projectData.item_pekerjaan_mayor.length === 0) {
+                toast.error('Harap tambahkan minimal satu item pekerjaan mayor');
+                return;
+            }
 
             const response = await axios.post(
                 'http://localhost:5000/api/projects',
@@ -431,22 +466,117 @@ const AddProject = () => {
                                 }}
                             />
                         </Grid>
-                        <Grid item xs={12} md={6}>
-                            <TextField
-                                fullWidth
-                                type="number"
-                                label="Jumlah Item Pekerjaan Mayor"
-                                name="jumlah_item_pekerjaan_mayor"
-                                value={projectData.jumlah_item_pekerjaan_mayor}
-                                onChange={handleInputChange}
-                                required
-                                variant="outlined"
-                                size={isMobile ? "small" : "medium"}
-                                inputProps={{ 
-                                    min: "1",
-                                    step: "1"
-                                }}
-                            />
+                        <Grid item xs={12}>
+                            <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
+                                <Box sx={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center', 
+                                    mb: 2,
+                                    flexDirection: isMobile ? 'column' : 'row',
+                                    gap: isMobile ? 1 : 0
+                                }}>
+                                    <Typography variant="h6" sx={{ color: 'primary.main' }}>
+                                        Item Pekerjaan Mayor
+                                    </Typography>
+                                    <Button
+                                        variant="contained"
+                                        onClick={() => setOpenDialog(true)}
+                                        startIcon={<AddIcon />}
+                                        size={isMobile ? "small" : "medium"}
+                                        sx={{ minWidth: isMobile ? '100%' : 'auto' }}
+                                    >
+                                        Tambah Item
+                                    </Button>
+                                </Box>
+                                
+                                <Box sx={{ 
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    mb: 2,
+                                    '&::-webkit-scrollbar': {
+                                        width: '8px'
+                                    },
+                                    '&::-webkit-scrollbar-track': {
+                                        background: '#f1f1f1',
+                                        borderRadius: '4px'
+                                    },
+                                    '&::-webkit-scrollbar-thumb': {
+                                        background: '#888',
+                                        borderRadius: '4px'
+                                    }
+                                }}>
+                                    {projectData.item_pekerjaan_mayor.map((item, index) => (
+                                        <Paper 
+                                            key={index} 
+                                            elevation={1}
+                                            sx={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: 2, 
+                                                mb: 1,
+                                                p: 1.5,
+                                                bgcolor: 'background.default',
+                                                borderRadius: '8px',
+                                                transition: 'all 0.2s ease',
+                                                '&:hover': {
+                                                    bgcolor: 'action.hover'
+                                                }
+                                            }}
+                                        >
+                                            <Typography 
+                                                sx={{ 
+                                                    flex: 1,
+                                                    fontSize: isMobile ? '0.9rem' : '1rem'
+                                                }}
+                                            >
+                                                {index + 1}. {item}
+                                            </Typography>
+                                            <IconButton 
+                                                onClick={() => handleRemoveItemPekerjaan(index)}
+                                                color="error"
+                                                size="small"
+                                                sx={{
+                                                    '&:hover': {
+                                                        bgcolor: 'error.light',
+                                                        color: 'white'
+                                                    }
+                                                }}
+                                            >
+                                                <DeleteIcon fontSize={isMobile ? "small" : "medium"} />
+                                            </IconButton>
+                                        </Paper>
+                                    ))}
+                                </Box>
+                                
+                                <Box sx={{ 
+                                    bgcolor: 'primary.light',
+                                    p: 2,
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 2
+                                }}>
+                                    <Typography 
+                                        sx={{ 
+                                            color: 'primary.contrastText',
+                                            fontWeight: 'medium',
+                                            flex: 1
+                                        }}
+                                    >
+                                        Total Item Pekerjaan Mayor:
+                                    </Typography>
+                                    <Typography 
+                                        sx={{ 
+                                            color: 'primary.contrastText',
+                                            fontWeight: 'bold',
+                                            fontSize: '1.2rem'
+                                        }}
+                                    >
+                                        {projectData.jumlah_item_pekerjaan_mayor}
+                                    </Typography>
+                                </Box>
+                            </Paper>
                         </Grid>
                         <Grid item xs={12} md={6}>
                             <TextField
@@ -504,6 +634,44 @@ const AddProject = () => {
                     </Grid>
                 </Box>
             </Paper>
+            <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
+                <DialogTitle>Tambah Item Pekerjaan Mayor</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        label="Nama Item Pekerjaan"
+                        fullWidth
+                        variant="outlined"
+                        value={tempItemPekerjaan}
+                        onChange={(e) => setTempItemPekerjaan(e.target.value)}
+                        inputProps={{
+                            maxLength: 100
+                        }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setOpenDialog(false)}>
+                        Batal
+                    </Button>
+                    <Button 
+                        onClick={() => {
+                            if (tempItemPekerjaan.trim()) {
+                                setProjectData(prev => ({
+                                    ...prev,
+                                    item_pekerjaan_mayor: [...prev.item_pekerjaan_mayor, tempItemPekerjaan.trim()],
+                                    jumlah_item_pekerjaan_mayor: (prev.item_pekerjaan_mayor.length + 1).toString()
+                                }));
+                                setTempItemPekerjaan('');
+                                setOpenDialog(false);
+                            }
+                        }}
+                        variant="contained"
+                    >
+                        Tambah
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Container>
     );
 };

@@ -231,7 +231,7 @@ app.put('/api/profile/:username', async (req, res) => {
 
 // Route untuk menambahkan proyek
 app.post('/api/projects', async (req, res) => {
-    console.log('Data yang diterima:', req.body); // Log data yang diterima
+    console.log('Data yang diterima:', req.body);
     try {
         const { 
             nama_kegiatan, 
@@ -247,6 +247,7 @@ app.post('/api/projects', async (req, res) => {
             tanggal_selesai,
             provisional_hand_over,
             final_hand_over,
+            item_pekerjaan_mayor,
             jumlah_item_pekerjaan_mayor,
             status
         } = req.body;
@@ -293,8 +294,10 @@ app.post('/api/projects', async (req, res) => {
 
         // Validasi jumlah item pekerjaan mayor
         const jumlahItem = parseInt(jumlah_item_pekerjaan_mayor);
-        if (isNaN(jumlahItem) || jumlahItem <= 0) {
-            return res.status(400).json({ message: 'Jumlah item pekerjaan mayor harus berupa angka dan lebih besar dari 0' });
+        if (isNaN(jumlahItem) || jumlahItem <= 0 || jumlahItem > 100) {
+            return res.status(400).json({ 
+                message: 'Jumlah item pekerjaan mayor harus berupa angka antara 1-100' 
+            });
         }
 
         // Tambahkan validasi tanggal setelah validasi field wajib
@@ -306,31 +309,52 @@ app.post('/api/projects', async (req, res) => {
             });
         }
 
-        const insertQuery = `
-            INSERT INTO projects 
-            (nama_kegiatan, nama_pekerjaan, lokasi, nomor_kontrak, tanggal_kontrak, 
-            nilai_kontrak, nama_kontraktor_pelaksana, nama_konsultan_pengawas, 
-            lama_pekerjaan, tanggal_mulai, tanggal_selesai, provisional_hand_over, final_hand_over,  
-            jumlah_item_pekerjaan_mayor, status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-
-        const [results] = await db.query(insertQuery, [
+        // Format data sebelum dikirim
+        const formattedData = {
             nama_kegiatan,
             nama_pekerjaan,
             lokasi,
             nomor_kontrak,
             tanggal_kontrak,
-            nilaiKontrak,
+            nilai_kontrak: parseFloat(nilai_kontrak),
             nama_kontraktor_pelaksana,
             nama_konsultan_pengawas,
-            lamaPekerjaanInt,
+            lama_pekerjaan: parseInt(lama_pekerjaan),
             tanggal_mulai,
             tanggal_selesai,
-            provisional_hand_over || '',
-            final_hand_over || '',
-            jumlahItem,
-            status || 'Aktif'
+            provisional_hand_over,
+            final_hand_over,
+            item_pekerjaan_mayor: JSON.stringify(item_pekerjaan_mayor || []), // Pastikan array kosong jika tidak ada data
+            jumlah_item_pekerjaan_mayor: parseInt(jumlah_item_pekerjaan_mayor),
+            status: status || 'Aktif'
+        };
+
+        const insertQuery = `
+            INSERT INTO projects 
+            (nama_kegiatan, nama_pekerjaan, lokasi, nomor_kontrak, tanggal_kontrak, 
+            nilai_kontrak, nama_kontraktor_pelaksana, nama_konsultan_pengawas, 
+            lama_pekerjaan, tanggal_mulai, tanggal_selesai, provisional_hand_over, final_hand_over,  
+            item_pekerjaan_mayor, jumlah_item_pekerjaan_mayor, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+
+        const [results] = await db.query(insertQuery, [
+            formattedData.nama_kegiatan,
+            formattedData.nama_pekerjaan,
+            formattedData.lokasi,
+            formattedData.nomor_kontrak,
+            formattedData.tanggal_kontrak,
+            formattedData.nilai_kontrak,
+            formattedData.nama_kontraktor_pelaksana,
+            formattedData.nama_konsultan_pengawas,
+            formattedData.lama_pekerjaan,
+            formattedData.tanggal_mulai,
+            formattedData.tanggal_selesai,
+            formattedData.provisional_hand_over,
+            formattedData.final_hand_over,
+            formattedData.item_pekerjaan_mayor,
+            formattedData.jumlah_item_pekerjaan_mayor,
+            formattedData.status
         ]);
 
         res.status(201).json({ 
@@ -517,17 +541,33 @@ app.get('/api/project-progress/:projectId', async (req, res) => {
     try {
         const { projectId } = req.params;
         const query = `
-            SELECT * FROM project_progress 
-            WHERE project_id = ?
-            ORDER BY update_date DESC
+            SELECT 
+                pp.*,
+                dr.volume,
+                (dr.volume * pp.harga_satuan) as nilai_total,
+                CASE 
+                    WHEN p.nilai_kontrak > 0 THEN 
+                        ROUND((dr.volume * pp.harga_satuan) / p.nilai_kontrak * 100, 2)
+                    ELSE 0 
+                END as progress
+            FROM project_progress pp
+            LEFT JOIN dimension_reports dr 
+                ON pp.project_id = dr.project_id 
+                AND pp.item_pekerjaan = dr.item_pekerjaan
+            LEFT JOIN projects p ON pp.project_id = p.id
+            WHERE pp.project_id = ?
+            ORDER BY pp.update_date DESC
         `;
         
         const [results] = await db.query(query, [projectId]);
         
-        // Format hasil query tanpa parsing JSON
+        // Format hasil query
         const formattedResults = results.map(row => ({
             ...row,
-            minggu: row.minggu || 'Minggu 1',  // Gunakan string langsung
+            minggu: row.minggu || 'Minggu 1',
+            volume: Number(row.volume) || 0,
+            harga_satuan: Number(row.harga_satuan) || 0,
+            nilai_total: Number(row.nilai_total) || 0,
             progress: Number(row.progress) || 0
         }));
         
@@ -536,7 +576,8 @@ app.get('/api/project-progress/:projectId', async (req, res) => {
         console.error('Server error:', error);
         res.status(500).json({
             message: 'Gagal mengambil data progress',
-            error: error.message
+            error: error.message,
+            data: []
         });
     }
 });
@@ -544,7 +585,7 @@ app.get('/api/project-progress/:projectId', async (req, res) => {
 // Endpoint untuk menambah progress
 app.post('/api/project-progress', async (req, res) => {
     try {
-        const { 
+        const {
             project_id,
             item_pekerjaan,
             nama_item_pekerjaan,
@@ -552,36 +593,85 @@ app.post('/api/project-progress', async (req, res) => {
             satuan_pekerjaan,
             harga_satuan,
             rencana_waktu_kerja,
-            minggu,        // Terima sebagai string
-            progress,
-            update_date 
+            minggu,
+            update_date
         } = req.body;
 
-        const insertQuery = `
-            INSERT INTO project_progress 
-            (project_id, item_pekerjaan, nama_item_pekerjaan, 
-            volume_pekerjaan, satuan_pekerjaan, harga_satuan, 
-            rencana_waktu_kerja, minggu, progress, update_date) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+        // Validasi input dasar
+        if (!project_id || !item_pekerjaan || !volume_pekerjaan || !harga_satuan) {
+            return res.status(400).json({
+                message: 'Data tidak lengkap'
+            });
+        }
 
-        const [result] = await db.query(insertQuery, [
-            Number(project_id),
+        // Konversi nilai ke tipe data yang sesuai
+        const formattedData = {
+            project_id: Number(project_id),
             item_pekerjaan,
             nama_item_pekerjaan,
-            Number(volume_pekerjaan) || 0,
-            satuan_pekerjaan || 'm³',
-            Number(harga_satuan) || 0,
-            Number(rencana_waktu_kerja) || 0,
-            minggu,        // Simpan sebagai string
-            Number(progress) || 0,
-            update_date || new Date().toISOString().split('T')[0]
-        ]);
+            volume_pekerjaan: parseFloat(volume_pekerjaan),
+            satuan_pekerjaan: satuan_pekerjaan || 'm³',
+            harga_satuan: parseFloat(harga_satuan),
+            rencana_waktu_kerja: Number(rencana_waktu_kerja) || 0,
+            minggu: minggu || 'Minggu 1',
+            update_date: update_date || new Date().toISOString().split('T')[0]
+        };
 
-        res.status(201).json({
-            message: 'Progress berhasil ditambahkan',
-            taskId: result.insertId
-        });
+        // Hitung nilai_total
+        const nilai_total = formattedData.volume_pekerjaan * formattedData.harga_satuan;
+
+        // Query untuk mendapatkan nilai_kontrak dan insert data dalam satu koneksi
+        const connection = await db.getConnection();
+        
+        try {
+            await connection.beginTransaction();
+
+            // Ambil nilai kontrak
+            const [projectResult] = await connection.query(
+                'SELECT nilai_kontrak FROM projects WHERE id = ?', 
+                [formattedData.project_id]
+            );
+            
+            const nilai_kontrak = projectResult[0]?.nilai_kontrak || 0;
+            const progress = nilai_kontrak > 0 ? (nilai_total / nilai_kontrak * 100) : 0;
+
+            // Insert data progress
+            const [result] = await connection.query(
+                `INSERT INTO project_progress 
+                (project_id, item_pekerjaan, nama_item_pekerjaan, 
+                volume_pekerjaan, satuan_pekerjaan, harga_satuan, 
+                rencana_waktu_kerja, minggu, progress, update_date, nilai_total) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    formattedData.project_id,
+                    formattedData.item_pekerjaan,
+                    formattedData.nama_item_pekerjaan,
+                    formattedData.volume_pekerjaan,
+                    formattedData.satuan_pekerjaan,
+                    formattedData.harga_satuan,
+                    formattedData.rencana_waktu_kerja,
+                    formattedData.minggu,
+                    Number(progress.toFixed(2)),
+                    formattedData.update_date,
+                    nilai_total
+                ]
+            );
+
+            await connection.commit();
+
+            res.status(201).json({
+                message: 'Progress berhasil ditambahkan',
+                taskId: result.insertId,
+                nilai_total,
+                progress: progress.toFixed(2),
+                volume_pekerjaan: formattedData.volume_pekerjaan
+            });
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
     } catch (error) {
         console.error('Server error:', error);
         res.status(500).json({
@@ -591,191 +681,13 @@ app.post('/api/project-progress', async (req, res) => {
     }
 });
 
-// Route untuk menyimpan method report
-app.post('/api/method-reports', async (req, res) => {
-    try {
-        const { 
-            project_id, 
-            work_type, 
-            method_data, 
-            process_flow,
-            status,
-            consultant_notes,
-            owner_notes 
-        } = req.body;
-
-        // Validasi input
-        if (!project_id || typeof project_id !== 'number') {
-            return res.status(400).json({
-                message: 'Project ID tidak valid'
-            });
-        }
-
-        if (!work_type || !['excavation', 'embankment', 'subgrade', 'granular_pavement', 'asphalt_pavement'].includes(work_type)) {
-            return res.status(400).json({
-                message: 'Work type tidak valid'
-            });
-        }
-
-        // Cek apakah sudah ada penilaian untuk project_id dan work_type yang sama
-        const checkExistingQuery = 'SELECT id FROM method_reports WHERE project_id = ? AND work_type = ?';
-        const [results] = await db.query(checkExistingQuery, [project_id, work_type]);
-
-        if (results.length > 0) {
-            // Jika sudah ada, update penilaian yang ada
-            const updateQuery = `
-                UPDATE method_reports 
-                SET method_data = ?, 
-                    process_flow = ?,
-                    status = ?,
-                    consultant_notes = ?,
-                    owner_notes = ?
-                WHERE project_id = ? AND work_type = ?
-            `;
-
-            await db.query(updateQuery, [
-                JSON.stringify(method_data),
-                JSON.stringify(process_flow || {}),
-                status || 'submitted',
-                consultant_notes || null,
-                owner_notes || null,
-                project_id,
-                work_type
-            ]);
-
-            res.status(200).json({
-                message: 'Penilaian metode berhasil diperbarui'
-            });
-        } else {
-            // Jika belum ada, buat penilaian baru
-            const insertQuery = `
-                INSERT INTO method_reports 
-                (project_id, work_type, method_data, process_flow, status, consultant_notes, owner_notes) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `;
-
-            const [insertResult] = await db.query(insertQuery, [
-                project_id,
-                work_type,
-                JSON.stringify(method_data),
-                JSON.stringify(process_flow || {}),
-                status || 'submitted',
-                consultant_notes || null,
-                owner_notes || null
-            ]);
-
-            res.status(201).json({
-                message: 'Penilaian metode berhasil disimpan',
-                id: insertResult.insertId
-            });
-        }
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            message: 'Terjadi kesalahan server'
-        });
-    }
-});
-
-// Route untuk menyimpan laporan dimensi
-app.post('/api/dimension-reports', upload.fields([
-  { name: 'foto_dokumentasi_panjang', maxCount: 1 },
-  { name: 'foto_dokumentasi_lebar', maxCount: 1 },
-  { name: 'foto_dokumentasi_tinggi', maxCount: 1 }
-]), async (req, res) => {
-  try {
-    console.log('Files received:', req.files);
-    console.log('Data received:', req.body);
-
-    const files = req.files;
-    const data = req.body;
-
-    // Validasi data dengan pesan error yang lebih detail
-    const requiredFields = ['project_id', 'no_kontrak', 'id_dimensi', 'item_pekerjaan'];
-    const missingFields = requiredFields.filter(field => !data[field]);
-    
-    if (missingFields.length > 0) {
-      return res.status(400).json({
-        message: `Data tidak lengkap. Field yang harus diisi: ${missingFields.join(', ')}`
-      });
-    }
-
-    // Validasi files dengan pesan error yang lebih detail
-    const requiredFiles = ['foto_dokumentasi_panjang', 'foto_dokumentasi_lebar', 'foto_dokumentasi_tinggi'];
-    const missingFiles = requiredFiles.filter(file => !files[file]);
-
-    if (missingFiles.length > 0) {
-      return res.status(400).json({
-        message: `File tidak lengkap. File yang harus diupload: ${missingFiles.join(', ')}`
-      });
-    }
-
-    const insertQuery = `
-      INSERT INTO dimension_reports (
-        project_id, no_kontrak, id_dimensi, item_pekerjaan,
-        panjang_pengukuran, foto_dokumentasi_panjang, lokasi_gps_panjang, tanggal_waktu_panjang,
-        lebar_pengukuran, foto_dokumentasi_lebar, lokasi_gps_lebar, tanggal_waktu_lebar,
-        tinggi_pengukuran, foto_dokumentasi_tinggi, lokasi_gps_tinggi, tanggal_waktu_tinggi
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const [result] = await db.query(insertQuery, [
-      parseInt(data.project_id),
-      data.no_kontrak,
-      data.id_dimensi,
-      data.item_pekerjaan,
-      parseFloat(data.panjang_pengukuran),
-      files.foto_dokumentasi_panjang[0].filename,
-      data.lokasi_gps_panjang,
-      data.tanggal_waktu_panjang,
-      parseFloat(data.lebar_pengukuran),
-      files.foto_dokumentasi_lebar[0].filename,
-      data.lokasi_gps_lebar,
-      data.tanggal_waktu_lebar,
-      parseFloat(data.tinggi_pengukuran),
-      files.foto_dokumentasi_tinggi[0].filename,
-      data.lokasi_gps_tinggi,
-      data.tanggal_waktu_tinggi
-    ]);
-
-    res.status(201).json({
-      message: 'Laporan dimensi berhasil ditambahkan',
-      id: result.insertId
-    });
-  } catch (error) {
-    console.error('Server error:', error);
-    res.status(500).json({
-      message: 'Gagal menyimpan laporan dimensi',
-      error: error.message
-    });
-  }
-});
-
-// Route untuk mendapatkan daftar work items berdasarkan project_id
-app.get('/api/projects/:id/work-items', async (req, res) => {
-    const { id } = req.params;
-    
-    const query = `SELECT id, name FROM work_items WHERE project_id = ?`;
-    
-    try {
-        const [results] = await db.query(query, [id]);
-        
-        res.json(results);
-    } catch (error) {
-        console.error('Server error:', error);
-        res.status(500).json({
-            message: 'Terjadi kesalahan saat mengambil data work items'
-        });
-    }
-});
-
 // Endpoint untuk update progress
 app.put('/api/project-progress/:id', async (req, res) => {
     const { id } = req.params;
     const { 
+        project_id,
         item_pekerjaan,
         nama_item_pekerjaan,
-        volume_pekerjaan,
         satuan_pekerjaan,
         harga_satuan,
         rencana_waktu_kerja,
@@ -784,43 +696,47 @@ app.put('/api/project-progress/:id', async (req, res) => {
     } = req.body;
     
     try {
-        // Pastikan minggu adalah array yang valid dan memiliki struktur yang benar
-        let mingguData = [];
-        if (Array.isArray(minggu)) {
-            mingguData = minggu.map(item => ({
-                minggu_ke: item.minggu_ke,
-                progress: parseFloat(item.progress) || 0
-            }));
-        }
+        // Ambil volume dari dimension_reports
+        const volumeQuery = `
+            SELECT volume 
+            FROM dimension_reports 
+            WHERE project_id = ? AND item_pekerjaan = ?
+            ORDER BY id DESC LIMIT 1
+        `;
+        const [volumeResult] = await db.query(volumeQuery, [project_id, item_pekerjaan]);
+        const volume = volumeResult[0]?.volume || 0;
+
+        // Hitung nilai total
+        const nilai_total = volume * Number(harga_satuan);
 
         const query = `
             UPDATE project_progress 
             SET item_pekerjaan = ?,
                 nama_item_pekerjaan = ?,
-                volume_pekerjaan = ?,
                 satuan_pekerjaan = ?,
                 harga_satuan = ?,
                 rencana_waktu_kerja = ?,
                 minggu = ?,
-                update_date = ?
+                update_date = ?,
+                nilai_total = ?
             WHERE id = ?
         `;
         
         await db.query(query, [
             item_pekerjaan,
             nama_item_pekerjaan,
-            Number(volume_pekerjaan) || 0,
             satuan_pekerjaan || 'm³',
             Number(harga_satuan) || 0,
             Number(rencana_waktu_kerja) || 0,
-            JSON.stringify(mingguData),
+            minggu,
             update_date || new Date().toISOString().split('T')[0],
+            nilai_total,
             id
         ]);
         
         res.json({ 
             message: 'Progress berhasil diupdate',
-            mingguData: mingguData
+            nilai_total: nilai_total
         });
     } catch (error) {
         console.error('Server error:', error);
@@ -849,11 +765,29 @@ app.delete('/api/project-progress/:id', async (req, res) => {
 app.get('/api/dimension-reports', async (req, res) => {
     try {
         const query = `
-            SELECT * FROM dimension_reports 
-            ORDER BY id DESC
+            SELECT 
+                d.*,
+                pp.harga_satuan,
+                (d.panjang_pengukuran * d.lebar_pengukuran * d.tinggi_pengukuran * pp.harga_satuan) as nilai_pekerjaan
+            FROM dimension_reports d
+            LEFT JOIN project_progress pp ON (
+                pp.project_id = d.project_id 
+                AND pp.item_pekerjaan = d.item_pekerjaan
+                AND pp.minggu = d.minggu
+            )
+            ORDER BY d.id DESC
         `;
         const [results] = await db.query(query);
-        res.json(results);
+        
+        // Format hasil untuk memastikan nilai numerik yang benar
+        const formattedResults = results.map(row => ({
+            ...row,
+            volume: row.panjang_pengukuran * row.lebar_pengukuran * row.tinggi_pengukuran,
+            harga_satuan: Number(row.harga_satuan) || 0,
+            nilai_pekerjaan: Number(row.nilai_pekerjaan) || 0
+        }));
+        
+        res.json(formattedResults);
     } catch (error) {
         console.error('Server error:', error);
         res.status(500).json({
@@ -872,42 +806,111 @@ app.post('/api/dimension-reports', upload.fields([
     const files = req.files;
     const data = req.body;
 
+    // Validasi data dengan pesan error yang lebih detail
+    const requiredFields = ['project_id', 'no_kontrak', 'id_dimensi', 'item_pekerjaan', 'minggu'];
+    const missingFields = requiredFields.filter(field => !data[field]);
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        message: `Data tidak lengkap. Field yang harus diisi: ${missingFields.join(', ')}`
+      });
+    }
+
+    // Validasi files
+    const requiredFiles = ['foto_dokumentasi_panjang', 'foto_dokumentasi_lebar', 'foto_dokumentasi_tinggi'];
+    const missingFiles = requiredFiles.filter(file => !files[file]);
+
+    if (missingFiles.length > 0) {
+      return res.status(400).json({
+        message: `File tidak lengkap. File yang harus diupload: ${missingFiles.join(', ')}`
+      });
+    }
+
+    // Konversi dan validasi nilai pengukuran
+    const panjang = parseFloat(data.panjang_pengukuran) || 0;
+    const lebar = parseFloat(data.lebar_pengukuran) || 0;
+    const tinggi = parseFloat(data.tinggi_pengukuran) || 0;
+
+    // Hitung volume
+    const volume = panjang * lebar * tinggi;
+
+    // Ambil harga satuan dari project_progress
+    const progressQuery = `
+      SELECT harga_satuan 
+      FROM project_progress 
+      WHERE project_id = ? 
+      AND item_pekerjaan = ? 
+      AND minggu = ?
+      ORDER BY id DESC LIMIT 1
+    `;
+    
+    const [progressResult] = await db.query(progressQuery, [
+      data.project_id, 
+      data.item_pekerjaan,
+      data.minggu
+    ]);
+    
+    const harga_satuan = parseFloat(progressResult[0]?.harga_satuan) || 0;
+
+    // Hitung nilai pekerjaan
+    const nilai_pekerjaan = volume * harga_satuan;
+
+    // Validasi project_id
+    const [project] = await db.query('SELECT id FROM projects WHERE id = ?', [data.project_id]);
+    
+    if (!project || project.length === 0) {
+        return res.status(400).json({
+            message: 'Project ID tidak valid atau tidak ditemukan'
+        });
+    }
+
     const insertQuery = `
       INSERT INTO dimension_reports (
-        project_id, no_kontrak, id_dimensi, item_pekerjaan,
+        project_id, no_kontrak, id_dimensi, item_pekerjaan, minggu,
         panjang_pengukuran, foto_dokumentasi_panjang, lokasi_gps_panjang, tanggal_waktu_panjang,
         lebar_pengukuran, foto_dokumentasi_lebar, lokasi_gps_lebar, tanggal_waktu_lebar,
-        tinggi_pengukuran, foto_dokumentasi_tinggi, lokasi_gps_tinggi, tanggal_waktu_tinggi
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        tinggi_pengukuran, foto_dokumentasi_tinggi, lokasi_gps_tinggi, tanggal_waktu_tinggi,
+        volume, harga_satuan, nilai_pekerjaan
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    const [result] = await db.query(insertQuery, [
-      data.project_id,
+    const values = [
+      parseInt(data.project_id) || 0,
       data.no_kontrak,
       data.id_dimensi,
       data.item_pekerjaan,
-      data.panjang_pengukuran,
-      files.foto_dokumentasi_panjang ? files.foto_dokumentasi_panjang[0].filename : null,
-      data.lokasi_gps_panjang,
-      data.tanggal_waktu_panjang,
-      data.lebar_pengukuran,
-      files.foto_dokumentasi_lebar ? files.foto_dokumentasi_lebar[0].filename : null,
-      data.lokasi_gps_lebar,
-      data.tanggal_waktu_lebar,
-      data.tinggi_pengukuran,
-      files.foto_dokumentasi_tinggi ? files.foto_dokumentasi_tinggi[0].filename : null,
-      data.lokasi_gps_tinggi,
-      data.tanggal_waktu_tinggi
-    ]);
+      data.minggu,
+      panjang,
+      files.foto_dokumentasi_panjang[0].filename,
+      data.lokasi_gps_panjang || null,
+      data.tanggal_waktu_panjang || null,
+      lebar,
+      files.foto_dokumentasi_lebar[0].filename,
+      data.lokasi_gps_lebar || null,
+      data.tanggal_waktu_lebar || null,
+      tinggi,
+      files.foto_dokumentasi_tinggi[0].filename,
+      data.lokasi_gps_tinggi || null,
+      data.tanggal_waktu_tinggi || null,
+      volume || 0,
+      harga_satuan || 0,
+      nilai_pekerjaan || 0
+    ];
+
+    const [result] = await db.query(insertQuery, values);
 
     res.status(201).json({
       message: 'Laporan dimensi berhasil ditambahkan',
-      id: result.insertId
+      id: result.insertId,
+      volume: volume || 0,
+      harga_satuan: harga_satuan || 0,
+      nilai_pekerjaan: nilai_pekerjaan || 0
     });
   } catch (error) {
     console.error('Server error:', error);
     res.status(500).json({
-      message: 'Gagal menyimpan laporan dimensi'
+      message: 'Gagal menyimpan laporan dimensi',
+      error: error.message
     });
   }
 });
@@ -938,48 +941,127 @@ app.put('/api/dimension-reports/:id', upload.fields([
     const files = req.files;
     const data = req.body;
 
+    // Validasi dan konversi nilai pengukuran
+    const panjang = parseFloat(data.panjang_pengukuran) || 0;
+    const lebar = parseFloat(data.lebar_pengukuran) || 0;
+    const tinggi = parseFloat(data.tinggi_pengukuran) || 0;
+
+    // Hitung volume dengan pengecekan
+    const volume = panjang * lebar * tinggi || 0; // Gunakan 0 jika hasilnya NaN
+
     // Get existing photos
     const [existing] = await db.query('SELECT * FROM dimension_reports WHERE id = ?', [id]);
     
     const updateQuery = `
       UPDATE dimension_reports 
-      SET no_kontrak = ?, id_dimensi = ?, item_pekerjaan = ?,
-          panjang_pengukuran = ?, foto_dokumentasi_panjang = ?, lokasi_gps_panjang = ?, tanggal_waktu_panjang = ?,
-          lebar_pengukuran = ?, foto_dokumentasi_lebar = ?, lokasi_gps_lebar = ?, tanggal_waktu_lebar = ?,
-          tinggi_pengukuran = ?, foto_dokumentasi_tinggi = ?, lokasi_gps_tinggi = ?, tanggal_waktu_tinggi = ?
+      SET no_kontrak = ?, 
+          id_dimensi = ?, 
+          item_pekerjaan = ?,
+          panjang_pengukuran = ?, 
+          foto_dokumentasi_panjang = ?, 
+          lokasi_gps_panjang = ?, 
+          tanggal_waktu_panjang = ?,
+          lebar_pengukuran = ?, 
+          foto_dokumentasi_lebar = ?, 
+          lokasi_gps_lebar = ?, 
+          tanggal_waktu_lebar = ?,
+          tinggi_pengukuran = ?, 
+          foto_dokumentasi_tinggi = ?, 
+          lokasi_gps_tinggi = ?, 
+          tanggal_waktu_tinggi = ?,
+          volume = ?
       WHERE id = ?
     `;
 
     await db.query(updateQuery, [
-      data.no_kontrak,
-      data.id_dimensi,
-      data.item_pekerjaan,
-      data.panjang_pengukuran,
+      data.no_kontrak || null,
+      data.id_dimensi || null,
+      data.item_pekerjaan || null,
+      panjang || null,
       files.foto_dokumentasi_panjang ? files.foto_dokumentasi_panjang[0].filename : existing[0].foto_dokumentasi_panjang,
-      data.lokasi_gps_panjang,
-      data.tanggal_waktu_panjang,
-      data.lebar_pengukuran,
+      data.lokasi_gps_panjang || null,
+      data.tanggal_waktu_panjang || null,
+      lebar || null,
       files.foto_dokumentasi_lebar ? files.foto_dokumentasi_lebar[0].filename : existing[0].foto_dokumentasi_lebar,
-      data.lokasi_gps_lebar,
-      data.tanggal_waktu_lebar,
-      data.tinggi_pengukuran,
+      data.lokasi_gps_lebar || null,
+      data.tanggal_waktu_lebar || null,
+      tinggi || null,
       files.foto_dokumentasi_tinggi ? files.foto_dokumentasi_tinggi[0].filename : existing[0].foto_dokumentasi_tinggi,
-      data.lokasi_gps_tinggi,
-      data.tanggal_waktu_tinggi,
+      data.lokasi_gps_tinggi || null,
+      data.tanggal_waktu_tinggi || null,
+      volume,
       id
     ]);
 
-    res.json({ message: 'Laporan dimensi berhasil diupdate' });
+    res.json({ 
+      message: 'Laporan dimensi berhasil diupdate',
+      volume: volume
+    });
   } catch (error) {
     console.error('Server error:', error);
     res.status(500).json({
-      message: 'Gagal mengupdate laporan dimensi'
+      message: 'Gagal mengupdate laporan dimensi',
+      error: error.message
     });
   }
 });
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));
+
+// Endpoint untuk mendapatkan item pekerjaan mayor
+app.get('/api/item-pekerjaan-mayor/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Ambil data projects terlebih dahulu
+        const projectQuery = 'SELECT item_pekerjaan_mayor FROM projects WHERE id = ?';
+        const [projectResult] = await db.query(projectQuery, [id]);
+
+        if (!projectResult.length) {
+            return res.status(404).json({
+                message: 'Project tidak ditemukan'
+            });
+        }
+
+        let itemPekerjaanMayor = [];
+        
+        // Coba parse jika dalam format JSON, jika bukan, split berdasarkan koma atau titik koma
+        if (projectResult[0].item_pekerjaan_mayor) {
+            try {
+                // Coba parse sebagai JSON
+                itemPekerjaanMayor = JSON.parse(projectResult[0].item_pekerjaan_mayor);
+            } catch (parseError) {
+                // Jika bukan JSON, split string berdasarkan koma atau titik koma
+                itemPekerjaanMayor = projectResult[0].item_pekerjaan_mayor
+                    .split(/[,;]/)
+                    .map(item => item.trim())
+                    .filter(item => item.length > 0);
+            }
+        }
+
+        // Format data sesuai yang dibutuhkan frontend
+        const formattedData = Array.isArray(itemPekerjaanMayor) ? 
+            itemPekerjaanMayor.map((item, index) => ({
+                kode_item: `ITEM-${index + 1}`,
+                nama_item: typeof item === 'string' ? item.trim() : item
+            })) : 
+            typeof itemPekerjaanMayor === 'string' ? 
+            [{
+                kode_item: 'ITEM-1',
+                nama_item: itemPekerjaanMayor.trim()
+            }] : [];
+
+        res.json(formattedData);
+        
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            message: 'Gagal mengambil data item pekerjaan mayor',
+            error: error.message
+        });
+    }
+});
 
 // Jalankan server
 app.listen(appPort, () => {
