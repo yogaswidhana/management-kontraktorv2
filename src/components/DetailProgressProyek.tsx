@@ -190,8 +190,6 @@ const DetailProgressProyek: React.FC = () => {
                 update_date: new Date().toISOString().split('T')[0]
             };
 
-            console.log('Data yang akan dikirim:', dataToSubmit);
-
             const response = await axios.post(
                 'http://localhost:5000/api/project-progress',
                 dataToSubmit,
@@ -204,7 +202,13 @@ const DetailProgressProyek: React.FC = () => {
             );
 
             if (response.status === 201) {
-                toast('Data berhasil disimpan', { icon: '✅' });
+                toast('Progress berhasil ditambahkan!', {
+                    duration: 3000,
+                    position: 'top-center',
+                    icon: '✅'
+                });
+                
+                // Reset form dan state
                 setFormData({
                     project_id: Number(id) || 0,
                     item_pekerjaan: '',
@@ -218,10 +222,19 @@ const DetailProgressProyek: React.FC = () => {
                 });
                 setShowForm(false);
                 fetchData();
+                
+                // Redirect ke halaman progress setelah 1 detik
+                setTimeout(() => {
+                    navigate('/progress');
+                }, 1000);
             }
         } catch (error: any) {
             console.error('Error:', error);
-            toast('Gagal menyimpan data', { icon: '❌' });
+            toast('Gagal menyimpan progress', {
+                duration: 3000,
+                position: 'top-center',
+                icon: '❌'
+            });
         } finally {
             setIsSubmitting(false);
         }
@@ -257,7 +270,7 @@ const DetailProgressProyek: React.FC = () => {
                             textAlign: isMobile ? 'center' : 'left'
                         }}
                     >
-                        Input Progress Proyek
+                        Rencana Pekerjaan
                     </Typography>
                     <Typography
                         variant="body1" 

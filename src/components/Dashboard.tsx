@@ -117,10 +117,10 @@ const Dashboard: React.FC<DashboardProps> = ({ role }) => {
                                         fontWeight: 600,
                                         fontSize: { xs: '1.25rem', sm: '1.5rem' }
                                     }}>
-                                        Progres
+                                        Rencana Pekerjaan
                                     </Typography>
                                     <Typography variant="body2" color="text.secondary">
-                                        Lihat detail progres pekerjaan.
+                                        Lihat detail rencana pekerjaan.
                                     </Typography>
                                 </StyledCardContent>
                                 <StyledCardActions>

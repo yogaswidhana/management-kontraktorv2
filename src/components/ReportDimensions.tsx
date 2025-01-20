@@ -66,22 +66,120 @@ const ReportDimensions: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectProgress, setProjectProgress] = useState<ProjectProgress[]>([]);
   const [currentTime, setCurrentTime] = useState(moment());
+  const [originalData, setOriginalData] = useState<DimensionRecord[]>([]);
 
-  // Add useEffect for real-time time update
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const now = moment();
-      setCurrentTime(now);
-      form.setFieldsValue({
-        tanggal_waktu_panjang: now,
-        tanggal_waktu_lebar: now,
-        tanggal_waktu_tinggi: now
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        message.error('Token tidak ditemukan');
+        return;
+      }
+
+      // Ambil data laporan dimensi
+      const response = await axios.get('http://localhost:5000/api/dimension-reports', {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-    }, 1000);
 
-    return () => clearInterval(timer);
-  }, [form]);
+      const formattedData = await Promise.all(response.data.map(async (item: any) => {
+        try {
+          const project = projects.find(p => p.id === item.project_id);
+          let progress = null;
+          
+          // Ambil data progress dengan error handling
+          try {
+            const progressResponse = await axios.get(
+              `http://localhost:5000/api/project-progress/${item.project_id}`,
+              { headers: { 'Authorization': `Bearer ${token}` } }
+            );
+            
+            progress = progressResponse.data.find(
+              (p: ProjectProgress) => 
+                p.item_pekerjaan === item.item_pekerjaan && 
+                p.minggu === item.minggu
+            );
+          } catch (progressError) {
+            console.error('Error fetching progress:', progressError);
+          }
 
+          // Hitung volume dan nilai pekerjaan dengan pengecekan null
+          const volume = Number(item.panjang_pengukuran || 0) * 
+                        Number(item.lebar_pengukuran || 0) * 
+                        Number(item.tinggi_pengukuran || 0);
+          const harga_satuan = Number(progress?.harga_satuan || item.harga_satuan || 0);
+          const nilai_pekerjaan = volume * harga_satuan;
+
+          return {
+            ...item,
+            nama_kegiatan: project?.nama_kegiatan || 'Tidak ada data',
+            nama_item_pekerjaan: item.nama_item_pekerjaan || progress?.nama_item_pekerjaan || 'Tidak ada data',
+            volume: Number(volume.toFixed(2)),
+            harga_satuan,
+            nilai_pekerjaan: Number(nilai_pekerjaan.toFixed(2))
+          };
+        } catch (itemError) {
+          console.error('Error processing item:', itemError);
+          return item; // Return original item if processing fails
+        }
+      }));
+
+      setData(formattedData);
+      setOriginalData(formattedData);
+    } catch (error: any) {
+      console.error('Error fetching data:', error);
+      message.error(error.response?.data?.message || 'Gagal mengambil data laporan dimensi');
+    } finally {
+      setLoading(false);
+    }
+  }, [projects]);
+
+  // Modifikasi useEffect untuk cleanup yang lebih baik
+  useEffect(() => {
+    let mounted = true;
+
+    const loadData = async () => {
+      if (!mounted) return;
+      try {
+        await fetchData();
+      } catch (error) {
+        if (mounted) {
+          console.error('Error loading data:', error);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [fetchData]);
+
+  // Modifikasi useEffect untuk modal
+  useEffect(() => {
+    let mounted = true;
+
+    const updateData = async () => {
+      if (!modalVisible && mounted) {
+        try {
+          await fetchData();
+        } catch (error) {
+          if (mounted) {
+            console.error('Error updating data:', error);
+          }
+        }
+      }
+    };
+
+    updateData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [modalVisible, fetchData]);
+
+  // Modifikasi useEffect untuk resize
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
@@ -91,68 +189,30 @@ const ReportDimensions: React.FC = () => {
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
   }, [isMobile]);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      // Ambil data laporan dimensi
-      const response = await axios.get('http://localhost:5000/api/dimension-reports', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      // Ambil data progress untuk setiap project_id yang ada
-      const formattedData = await Promise.all(response.data.map(async (item: any) => {
-        const project = projects.find(p => p.id === item.project_id);
-        
-        // Ambil data progress untuk project ini
-        let progress = null;
-        if (project) {
-          const progressResponse = await axios.get(
-            `http://localhost:5000/api/project-progress/${item.project_id}`,
-            { headers: { 'Authorization': `Bearer ${token}` } }
-          );
-          progress = progressResponse.data.find(
-            (p: ProjectProgress) => p.item_pekerjaan === item.item_pekerjaan
-          );
-        }
-
-        return {
-          ...item,
-          nama_kegiatan: project?.nama_kegiatan || 'Tidak ada data',
-          nama_item_pekerjaan: progress?.nama_item_pekerjaan || 'Tidak ada data',
-          minggu: progress?.minggu || 'Tidak ada data'
-        };
-      }));
-
-      console.log('Formatted data:', formattedData);
-      setData(formattedData);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      message.error('Gagal mengambil data laporan dimensi');
-    } finally {
-      setLoading(false);
-    }
-  }, [projects]);
-
+  // Modifikasi useEffect untuk timer
   useEffect(() => {
-    let mounted = true;
-
-    const loadData = async () => {
-      if (!mounted) return;
-      await fetchData();
-    };
-
-    loadData();
+    const timer = setInterval(() => {
+      const now = moment();
+      setCurrentTime(now);
+      if (form) {
+        form.setFieldsValue({
+          tanggal_waktu_panjang: now,
+          tanggal_waktu_lebar: now,
+          tanggal_waktu_tinggi: now
+        });
+      }
+    }, 1000);
 
     return () => {
-      mounted = false;
+      clearInterval(timer);
     };
-  }, [fetchData]);
+  }, [form]);
 
   useEffect(() => {
     let mounted = true;
@@ -261,11 +321,6 @@ const ReportDimensions: React.FC = () => {
     } catch (error) {
       message.error('Gagal menghapus laporan dimensi');
     }
-  };
-
-  const calculateNilaiPekerjaan = (volume: number, progress: ProjectProgress | undefined) => {
-    if (!progress) return 0;
-    return volume * progress.harga_satuan;
   };
 
   const handleSubmit = async (values: any) => {
@@ -441,8 +496,6 @@ const ReportDimensions: React.FC = () => {
 
   const renderMobileCard = (record: DimensionRecord) => {
     const volume = record.panjang_pengukuran * record.lebar_pengukuran * record.tinggi_pengukuran;
-    const progress = projectProgress.find(p => p.item_pekerjaan === record.item_pekerjaan);
-    const nilai = calculateNilaiPekerjaan(volume, progress);
 
     return (
       <Card 
@@ -524,10 +577,6 @@ const ReportDimensions: React.FC = () => {
           <div style={{ marginTop: '16px' }}>
             <div style={{ color: '#8c8c8c', fontWeight: 'bold' }}>Volume</div>
             <div style={{ fontSize: '16px', color: '#1890ff' }}>{volume.toFixed(2)} m³</div>
-            <div style={{ color: '#8c8c8c', fontWeight: 'bold', marginTop: '8px' }}>Nilai Pekerjaan</div>
-            <div style={{ fontSize: '16px', color: '#1890ff' }}>
-              Rp {new Intl.NumberFormat('id-ID').format(nilai)}
-            </div>
           </div>
         </div>
 
@@ -725,8 +774,8 @@ const ReportDimensions: React.FC = () => {
             allowClear
             onChange={(value) => {
               const filteredData = value 
-                ? data.filter(item => item.nama_kegiatan === value)
-                : data;
+                ? originalData.filter(item => item.nama_kegiatan === value)
+                : originalData;
               setData(filteredData);
             }}
           >

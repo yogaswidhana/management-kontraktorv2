@@ -268,6 +268,15 @@ const Progress: React.FC = () => {
         };
     };
 
+    // Tambahkan fungsi untuk menghitung total progress
+    const calculateTotalProgress = (progressItems: ProjectProgress[]) => {
+        let totalProgress = 0;
+        progressItems.forEach(item => {
+            totalProgress += item.progress || 0;
+        });
+        return Number(totalProgress.toFixed(2));
+    };
+
     if (loading) {
         return (
             <Box sx={{ 
@@ -303,7 +312,7 @@ const Progress: React.FC = () => {
                         fontWeight: 'bold',
                         fontSize: { xs: '1.75rem', sm: '2.25rem' }
                     }}>
-                        Progress Proyek
+                        Rencana Pekerjaan
                     </Typography>
                 </Box>
 
@@ -411,19 +420,37 @@ const Progress: React.FC = () => {
                                                     fontFamily: 'monospace',
                                                     color: '#1976d2'
                                                 }}>
-                                                    Rp {new Intl.NumberFormat('id-ID', {
-                                                        style: 'decimal',
-                                                        minimumFractionDigits: 0,
-                                                        maximumFractionDigits: 0
-                                                    }).format(calculateTotalNilai(projectProgress[project.id] || []))}
+                                                    Rp {new Intl.NumberFormat('id-ID').format(calculateTotalNilai(projectProgress[project.id] || []))}
                                                 </Typography>
+
+                                                {/* Tambahkan total progress di sini */}
+                                                <Box sx={{ mt: 2 }}>
+                                                    <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                                                        Total Progress:
+                                                    </Typography>
+                                                    <LinearProgress 
+                                                        variant="determinate" 
+                                                        value={calculateTotalProgress(projectProgress[project.id])}
+                                                        sx={{
+                                                            height: 8,
+                                                            borderRadius: 4,
+                                                            backgroundColor: '#e0e0e0',
+                                                            '& .MuiLinearProgress-bar': {
+                                                                backgroundColor: '#1976d2'
+                                                            }
+                                                        }}
+                                                    />
+                                                    <Typography variant="body2" sx={{ mt: 0.5, textAlign: 'right' }}>
+                                                        {calculateTotalProgress(projectProgress[project.id])}%
+                                                    </Typography>
+                                                </Box>
                                             </Box>
                                         )}
 
                                         {(projectProgress[project.id] || [])
                                             .filter(progress => !selectedItems[project.id] || progress.nama_item_pekerjaan === selectedItems[project.id])
                                             .map((progress) => {
-                                                const { totalNilai, progressPercentage } = calculateProgress(progress);
+                                                const { totalNilai } = calculateProgress(progress);
                                                 
                                                 return (
                                                     <Box key={progress.id} sx={{ mb: 2, p: 2, bgcolor: '#f8f9fa', borderRadius: 1 }}>
@@ -475,32 +502,6 @@ const Progress: React.FC = () => {
                                                             </Grid>
                                                         </Grid>
 
-                                                        <Box sx={{ mt: 1 }}>
-                                                            <LinearProgress 
-                                                                variant="determinate" 
-                                                                value={progressPercentage}
-                                                                sx={{
-                                                                    height: 8,
-                                                                    borderRadius: 4,
-                                                                    backgroundColor: '#e0e0e0',
-                                                                    '& .MuiLinearProgress-bar': {
-                                                                        backgroundColor: progressPercentage >= 80 ? '#4caf50' : 
-                                                                                progressPercentage >= 50 ? '#ff9800' : '#f44336',
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <Box sx={{ 
-                                                                mt: 0.5, 
-                                                                display: 'flex', 
-                                                                justifyContent: 'flex-end',
-                                                                alignItems: 'center'
-                                                            }}>
-                                                                <Typography variant="body2">
-                                                                    {progressPercentage}%
-                                                                </Typography>
-                                                            </Box>
-                                                        </Box>
-
                                                         <Grid container spacing={1} sx={{ mt: 1 }}>
                                                             <Grid item xs={12}>
                                                                 <Typography variant="body2" sx={{
@@ -550,7 +551,7 @@ const Progress: React.FC = () => {
                                                     fontWeight: 'medium'
                                                 }}
                                             >
-                                                Detail Progress
+                                                Tambah Pekerjaan
                                             </Button>
                                         </Box>
                                     </CardContent>
